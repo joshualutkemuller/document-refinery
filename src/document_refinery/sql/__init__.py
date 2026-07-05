@@ -1,0 +1,2 @@
+"""Packaged Delta SQL resources."""
+
