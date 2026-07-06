@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from importlib.resources import files
 from pathlib import Path
 
@@ -24,6 +25,11 @@ from document_refinery.application.pipeline import (
 from document_refinery.application.promotion import PromotionError
 from document_refinery.application.review_session import build_review_requests, render_review
 from document_refinery.domain.models import SilverExtraction
+from document_refinery.infrastructure.chat_completions import (
+    DEFAULT_OLLAMA_URL,
+    build_ollama_model,
+    build_openai_compatible_model,
+)
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
@@ -95,11 +101,23 @@ def build_parser() -> argparse.ArgumentParser:
 def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--semantic-provider",
-        choices=("openai", "local"),
+        nargs="?",
+        const="ollama",
+        choices=("ollama", "openai", "openai-compatible", "local"),
         help=(
-            "enable semantic routing for unknown templates. 'openai' is the "
-            "approved production provider (needs OPENAI_API_KEY + network); "
-            "'local' is an offline heuristic double for local pipeline testing"
+            "enable semantic routing for unknown templates. Bare flag defaults to "
+            "'ollama' (local model, data stays on your machine — most secure). "
+            "'openai' is the approved ZDR production provider (OPENAI_API_KEY + "
+            "network); 'openai-compatible' targets a third-party endpoint via "
+            "--semantic-base-url (data leaves your machine); 'local' is an offline "
+            "heuristic double for pipeline testing"
+        ),
+    )
+    parser.add_argument(
+        "--semantic-base-url",
+        help=(
+            "endpoint URL; required for 'openai-compatible', optional override for "
+            "'ollama' (default http://localhost:11434/v1/chat/completions)"
         ),
     )
     parser.add_argument("--semantic-extractor-model")
@@ -150,6 +168,7 @@ def main() -> int:
             approved_by=args.approved_by,
             language=args.language,
             semantic_provider=args.semantic_provider,
+            semantic_base_url=args.semantic_base_url,
             semantic_extractor_model=args.semantic_extractor_model,
             semantic_validator_model=args.semantic_validator_model,
             semantic_schema_version=args.semantic_schema_version,
@@ -195,6 +214,7 @@ def main() -> int:
             approved_by=args.approved_by,
             language=args.language,
             semantic_provider=args.semantic_provider,
+            semantic_base_url=args.semantic_base_url,
             semantic_extractor_model=args.semantic_extractor_model,
             semantic_validator_model=args.semantic_validator_model,
             semantic_schema_version=args.semantic_schema_version,
@@ -213,6 +233,7 @@ def _run_documents(
     approved_by: str | None,
     language: str,
     semantic_provider: str | None,
+    semantic_base_url: str | None,
     semantic_extractor_model: str | None,
     semantic_validator_model: str | None,
     semantic_schema_version: str,
@@ -222,6 +243,7 @@ def _run_documents(
 ) -> None:
     semantic_extractor, semantic_validator = _build_semantic_components(
         provider=semantic_provider,
+        base_url=semantic_base_url,
         extractor_model=semantic_extractor_model,
         validator_model=semantic_validator_model,
         schema_version=semantic_schema_version,
@@ -229,6 +251,13 @@ def _run_documents(
         timeout_seconds=semantic_timeout_seconds,
         max_retries=semantic_max_retries,
     )
+    if semantic_provider == "openai-compatible":
+        print(
+            f"notice: document text will be sent to {semantic_base_url}; retention/ZDR "
+            "is the provider's responsibility and is NOT covered by the approved OpenAI "
+            "ZDR policy. Use only for non-confidential documents unless verified.",
+            file=sys.stderr,
+        )
     pipeline = RefineryPipeline(
         workspace,
         semantic_extractor=semantic_extractor,
@@ -353,6 +382,71 @@ def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
     return tuple(requests)
 
 
+def _build_semantic_backends(
+    *,
+    provider: str,
+    base_url: str | None,
+    extractor_model: str | None,
+    validator_model: str | None,
+    timeout_seconds: float,
+    max_retries: int,
+) -> tuple[str, str, SemanticModel, SemanticModel]:
+    """Construct the two provider-specific model sessions (extractor, validator)."""
+    if provider == "local":
+        extractor_name = extractor_model or "local-heuristic-v1"
+        validator_name = validator_model or "local-heuristic-v1"
+        return (
+            extractor_name,
+            validator_name,
+            LocalHeuristicSemanticModel(model=extractor_name, session_id="local-extractor-session"),
+            LocalHeuristicSemanticModel(model=validator_name, session_id="local-validator-session"),
+        )
+    if not extractor_model or not validator_model:
+        raise ValueError("both extractor and validator semantic models are required")
+    if provider == "openai":
+        return (
+            extractor_model,
+            validator_model,
+            OpenAISemanticModel(
+                model=extractor_model, session_id="openai-extractor-session",
+                timeout_seconds=timeout_seconds, max_retries=max_retries,
+            ),
+            OpenAISemanticModel(
+                model=validator_model, session_id="openai-validator-session",
+                timeout_seconds=timeout_seconds, max_retries=max_retries,
+            ),
+        )
+    if provider == "ollama":
+        ollama_url = base_url or DEFAULT_OLLAMA_URL
+        return (
+            extractor_model,
+            validator_model,
+            build_ollama_model(
+                model=extractor_model, session_id="ollama-extractor-session",
+                base_url=ollama_url, timeout_seconds=timeout_seconds, max_retries=max_retries,
+            ),
+            build_ollama_model(
+                model=validator_model, session_id="ollama-validator-session",
+                base_url=ollama_url, timeout_seconds=timeout_seconds, max_retries=max_retries,
+            ),
+        )
+    # openai-compatible: third-party endpoint, data leaves the machine.
+    if not base_url:
+        raise ValueError("--semantic-base-url is required for the openai-compatible provider")
+    return (
+        extractor_model,
+        validator_model,
+        build_openai_compatible_model(
+            model=extractor_model, base_url=base_url, session_id="openai-compatible-extractor",
+            timeout_seconds=timeout_seconds, max_retries=max_retries,
+        ),
+        build_openai_compatible_model(
+            model=validator_model, base_url=base_url, session_id="openai-compatible-validator",
+            timeout_seconds=timeout_seconds, max_retries=max_retries,
+        ),
+    )
+
+
 def _build_semantic_components(
     *,
     provider: str | None,
@@ -362,12 +456,13 @@ def _build_semantic_components(
     constitution_version: str,
     timeout_seconds: float,
     max_retries: int,
+    base_url: str | None = None,
 ) -> tuple[SemanticExtractor | None, SemanticValidator | None]:
     if provider is None:
         if extractor_model or validator_model:
             raise ValueError("--semantic-provider is required when semantic models are set")
         return None, None
-    if provider not in {"openai", "local"}:
+    if provider not in {"ollama", "openai", "openai-compatible", "local"}:
         raise ValueError(f"unsupported semantic provider: {provider}")
     if max_retries < 0:
         raise ValueError("semantic max retries must be non-negative")
@@ -379,33 +474,16 @@ def _build_semantic_components(
         "Extract collateral eligibility schedule terms only. Preserve original-language "
         "evidence, emit explicit not_found fields, and never emit system-controlled fields."
     )
-    if provider == "openai":
-        if not extractor_model or not validator_model:
-            raise ValueError("both extractor and validator semantic models are required")
-        extractor_model_name, validator_model_name = extractor_model, validator_model
-        extractor_backend: SemanticModel = OpenAISemanticModel(
-            model=extractor_model,
-            session_id="openai-extractor-session",
+    extractor_model_name, validator_model_name, extractor_backend, validator_backend = (
+        _build_semantic_backends(
+            provider=provider,
+            base_url=base_url,
+            extractor_model=extractor_model,
+            validator_model=validator_model,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
         )
-        validator_backend: SemanticModel = OpenAISemanticModel(
-            model=validator_model,
-            session_id="openai-validator-session",
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-        )
-    else:  # local offline heuristic double (no API key / network)
-        extractor_model_name = extractor_model or "local-heuristic-v1"
-        validator_model_name = validator_model or "local-heuristic-v1"
-        extractor_backend = LocalHeuristicSemanticModel(
-            model=extractor_model_name,
-            session_id="local-extractor-session",
-        )
-        validator_backend = LocalHeuristicSemanticModel(
-            model=validator_model_name,
-            session_id="local-validator-session",
-        )
+    )
     extractor = SemanticExtractor(
         extractor_backend,
         constitution=constitution,
