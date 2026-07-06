@@ -195,7 +195,10 @@ download list and wire each one in with `scripts/add_corpus_document.py`.
 
 The workspace contains content-addressed raw/text/layout artifacts, SQLite task
 state, extracted and validated silver JSONL, review packets, local gold JSONL,
-and a three-altitude quality report.
+a three-altitude quality report, and a self-contained
+**`quality_dashboard.html`** — a theme-aware coverage/confidence/validation
+dashboard (KPI tiles, a validation-status bar, and a per-document coverage table)
+rendered from the same quality data, ready to open or serve from the Dash stack.
 
 ### Production gold storage (Delta Lake)
 

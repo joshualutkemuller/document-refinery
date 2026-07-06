@@ -34,6 +34,7 @@ from document_refinery.infrastructure.chat_completions import (
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
+from document_refinery.quality.dashboard import render_dashboard
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
 
@@ -356,7 +357,10 @@ def _run_documents(
                 + "\n",
                 encoding="utf-8",
             )
+            dashboard_path = workspace / "quality_dashboard.html"
+            dashboard_path.write_text(render_dashboard(report), encoding="utf-8")
             print(f"Quality report: {quality_path}")
+            print(f"Quality dashboard: {dashboard_path}")
     finally:
         pipeline.close()
 
