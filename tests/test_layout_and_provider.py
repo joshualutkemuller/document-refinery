@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from document_refinery.agents.semantic import SemanticRequest
+from document_refinery.infrastructure.artifacts import ArtifactStore
+from document_refinery.infrastructure.semantic_providers import (
+    APPROVED_OPENAI_POLICY,
+    DataRetentionPolicy,
+    OpenAISemanticModel,
+)
+
+
+def test_text_artifact_persists_coordinate_layout_layer(tmp_path: Path) -> None:
+    source = tmp_path / "schedule.txt"
+    source.write_text("Line one\nLine two", encoding="utf-8")
+    store = ArtifactStore(tmp_path / "artifacts")
+    document = store.ingest(source, source="test")
+    enriched, artifact = store.extract_text(document)
+
+    layout = json.loads(Path(artifact.layout_uri).read_text(encoding="utf-8"))
+    assert enriched.layout_artifact_uri == artifact.layout_uri
+    assert layout["adapter"] == "text-line-layout"
+    assert layout["pages"][0]["lines"][0]["locator"] == "page=1;line=1"
+    assert layout["pages"][0]["lines"][0]["bbox"] == {
+        "x0": 0.0,
+        "y0": 0.0,
+        "x1": 8.0,
+        "y1": 1.0,
+    }
+    assert layout["pages"][0]["reading_order"] == ["page=1;line=1", "page=1;line=2"]
+
+
+def test_openai_policy_requires_zero_data_retention() -> None:
+    policy = DataRetentionPolicy(
+        provider="openai",
+        retention_tier="standard-retention",
+        geographic_processing="US",
+        logging="standard",
+        credential_policy="env",
+        approved_for_production_calls=True,
+    )
+    with pytest.raises(ValueError, match="zero-data-retention"):
+        policy.require_approved()
+    APPROVED_OPENAI_POLICY.require_approved()
+
+
+def test_openai_adapter_maps_responses_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"id": "resp-1", "output_text": "{\"extractions\": []}"}).encode()
+
+    def fake_urlopen(request: object, timeout: float) -> FakeResponse:
+        captured["timeout"] = timeout
+        captured["body"] = json.loads(request.data.decode("utf-8"))  # type: ignore[attr-defined]
+        return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    model = OpenAISemanticModel(model="gpt-5.5", session_id="extractor-session")
+    response = model.generate(
+        SemanticRequest(
+            session_id="extractor-session",
+            system_prompt="system",
+            user_payload="payload",
+            response_schema={"type": "object"},
+            prompt_version="v1",
+        )
+    )
+
+    assert response.provider == "openai"
+    assert response.model == "gpt-5.5"
+    assert response.response_id == "resp-1"
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert body["text"]["format"]["strict"] is True  # type: ignore[index]
+    assert body["metadata"]["document_refinery_session_id"] == "extractor-session"  # type: ignore[index]

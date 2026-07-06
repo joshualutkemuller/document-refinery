@@ -9,6 +9,12 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from document_refinery.infrastructure.layout import (
+    LayoutAdapter,
+    TextLineLayoutAdapter,
+    write_layout_artifact,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BronzeDocument:
@@ -36,8 +42,9 @@ class TextArtifact:
 class ArtifactStore:
     """Filesystem implementation with hash-addressed, never-overwritten objects."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, layout_adapter: LayoutAdapter | None = None) -> None:
         self.root = root
+        self.layout_adapter = layout_adapter or TextLineLayoutAdapter()
         self.raw_root = root / "bronze" / "raw"
         self.metadata_root = root / "bronze" / "metadata"
         self.text_root = root / "bronze" / "text"
@@ -97,22 +104,12 @@ class ArtifactStore:
         text_path = self.text_root / f"{document.file_hash}.txt"
         layout_path = self.layout_root / f"{document.file_hash}.json"
         _write_new_text(text_path, text)
-        _write_new_json(
-            layout_path,
-            {
-                "doc_id": document.doc_id,
-                "pages": [
-                    {
-                        "page": page_number,
-                        "lines": [
-                            {"line": line_number, "text": line}
-                            for line_number, line in enumerate(page.splitlines(), start=1)
-                        ],
-                    }
-                    for page_number, page in enumerate(pages, start=1)
-                ],
-            },
+        layout = self.layout_adapter.analyze(
+            doc_id=document.doc_id,
+            path=source_path,
+            pages=tuple(pages),
         )
+        write_layout_artifact(layout_path, layout)
         artifact = TextArtifact(
             doc_id=document.doc_id,
             text=text,
