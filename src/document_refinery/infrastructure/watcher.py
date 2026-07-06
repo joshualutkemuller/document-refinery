@@ -14,6 +14,7 @@ class LandingCandidate:
 
 class LandingZoneWatcher:
     SUPPORTED_SUFFIXES = {".txt", ".md", ".pdf"}
+    IGNORED_NAMES = {"README.md"}
 
     def __init__(self, landing_zone: Path, *, source: str) -> None:
         self.landing_zone = landing_zone
@@ -28,4 +29,5 @@ class LandingZoneWatcher:
             if path.is_file()
             and path.suffix.casefold() in self.SUPPORTED_SUFFIXES
             and not path.name.startswith(".")
+            and path.name not in self.IGNORED_NAMES
         )

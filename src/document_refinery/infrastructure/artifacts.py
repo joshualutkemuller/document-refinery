@@ -172,7 +172,7 @@ def _read_bronze(path: Path) -> BronzeDocument:
 
 def _read_pdf(path: Path) -> list[str]:
     try:
-        from pypdf import PdfReader  # type: ignore[import-not-found]
+        from pypdf import PdfReader
     except ImportError as error:
         raise RuntimeError("PDF extraction requires the 'pdf' project extra") from error
     return [(page.extract_text() or "") for page in PdfReader(path).pages]

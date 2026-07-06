@@ -28,6 +28,8 @@ class MarginType(StrEnum):
     VM = "VM"
     IM = "IM"
     REPO = "Repo"
+    CLEARING_FUND = "Clearing Fund"
+    SECURED_FINANCING = "Secured Financing"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,4 +131,3 @@ class GoldEligibilityTerm:
         ):
             if value is not None and not 0.0 <= value <= 100.0:
                 raise ValueError(f"{name} must be between 0 and 100")
-

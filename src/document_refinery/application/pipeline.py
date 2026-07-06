@@ -11,6 +11,10 @@ from document_refinery.agents.eligibility import (
     EligibilityAdversarialValidator,
     EligibilityScheduleExtractor,
 )
+from document_refinery.agents.public_schedules import (
+    PublicCollateralScheduleExtractor,
+    PublicScheduleValidator,
+)
 from document_refinery.application.classification import EligibilityScheduleClassifier
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
@@ -40,6 +44,8 @@ class RefineryPipeline:
         self.classifier = EligibilityScheduleClassifier()
         self.extractor = EligibilityScheduleExtractor()
         self.validator = EligibilityAdversarialValidator()
+        self.public_extractor = PublicCollateralScheduleExtractor()
+        self.public_validator = PublicScheduleValidator()
         self.gate = GateAService()
         self.promotion = EligibilityPromotion()
 
@@ -63,11 +69,29 @@ class RefineryPipeline:
             )
         self.tasks.transition(document.doc_id, TaskStatus.CLASSIFIED)
 
-        extracted = self.extractor.extract(doc_id=document.doc_id, text=text_artifact.text)
+        if classification.profile == "normalized":
+            extracted = self.extractor.extract(
+                doc_id=document.doc_id,
+                text=text_artifact.text,
+            )
+            validated = self.validator.validate(
+                text=text_artifact.text,
+                extractions=extracted,
+            )
+        else:
+            extracted = self.public_extractor.extract(
+                profile=classification.profile,
+                doc_id=document.doc_id,
+                text=text_artifact.text,
+                received_date=document.received_at.date(),
+            )
+            validated = self.public_validator.validate(
+                text=text_artifact.text,
+                extractions=extracted,
+            )
         self.silver.write(extracted, stage="extracted")
         self.tasks.transition(document.doc_id, TaskStatus.EXTRACTED)
 
-        validated = self.validator.validate(text=text_artifact.text, extractions=extracted)
         self.silver.write(validated, stage="validated")
         self.tasks.transition(document.doc_id, TaskStatus.VALIDATED)
         self.tasks.transition(document.doc_id, TaskStatus.GATE_A_PENDING)

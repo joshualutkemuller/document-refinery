@@ -37,6 +37,6 @@ def test_watcher_discovers_only_supported_visible_files(tmp_path: Path) -> None:
     (tmp_path / "a.txt").touch()
     (tmp_path / ".hidden.txt").touch()
     (tmp_path / "ignored.csv").touch()
+    (tmp_path / "README.md").touch()
     candidates = LandingZoneWatcher(tmp_path, source="drop").discover()
     assert [candidate.path.name for candidate in candidates] == ["a.txt", "b.pdf"]
-

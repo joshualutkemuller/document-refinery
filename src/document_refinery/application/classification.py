@@ -12,12 +12,23 @@ class Classification:
     counterparty: str | None
     agreement_id: str | None
     review_required: bool
+    profile: str = "normalized"
 
 
 class EligibilityScheduleClassifier:
     DOC_CLASS = "collateral_eligibility_schedule"
 
     def classify(self, text: str, *, hint: str | None = None) -> Classification:
+        public_profile = _public_profile(text)
+        if public_profile:
+            return Classification(
+                doc_class=self.DOC_CLASS,
+                confidence=0.99,
+                counterparty=None,
+                agreement_id=None,
+                review_required=False,
+                profile=public_profile,
+            )
         fields = _header_fields(text)
         lowered = text.casefold()
         evidence = sum(
@@ -37,6 +48,7 @@ class EligibilityScheduleClassifier:
             counterparty=fields.get("counterparty"),
             agreement_id=fields.get("agreement id"),
             review_required=confidence < 0.8,
+            profile="normalized",
         )
 
 
@@ -57,3 +69,50 @@ def _header_fields(text: str) -> dict[str, str]:
             fields[normalized] = value.strip()
     return fields
 
+
+def _public_profile(text: str) -> str | None:
+    lowered = text.casefold()
+    signatures = (
+        (
+            "ficc_gsd",
+            (
+                "ficc government securities division",
+                "schedule of haircuts for eligible clearing fund securities",
+            ),
+        ),
+        (
+            "dtc",
+            (
+                "depository trust and clearing corporation",
+                "schedule of haircuts for eligible collateral securities",
+            ),
+        ),
+        (
+            "cme",
+            (
+                "cme group",
+                "acceptable performance bond collateral",
+                "haircut schedule",
+            ),
+        ),
+        (
+            "isda_vm",
+            (
+                "isda collateral asset definition",
+                "eligible collateral (vm)",
+                "valuation percentage",
+            ),
+        ),
+        (
+            "portfolio_guidelines",
+            (
+                "investment guidelines & portfolio requirements",
+                "single issuer concentration limit",
+                "eligible assets",
+            ),
+        ),
+    )
+    for profile, required in signatures:
+        if all(value in lowered for value in required):
+            return profile
+    return None
