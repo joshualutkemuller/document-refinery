@@ -1,6 +1,6 @@
 # Document Refinery — Build Plan & LLM Handoff Document
 
-**Version:** 1.3 (N1 provider/policy checkpoint)
+**Version:** 1.4 (N3 provider-adapter checkpoint)
 **Checkpoint date:** 2026-07-06
 **Owner/CEO:** Joshua (quantitative researcher, securities finance / collateral / ML systems)
 **Purpose of this document:** Complete context transfer to any LLM or engineer continuing development. Read fully before writing code. Locked decisions are binding unless the owner explicitly reverses them.
@@ -11,7 +11,7 @@
 ## 0. Current Repository Checkpoint
 
 The repository is no longer an initial scaffold. Phase 0/1 engineering and the
-hybrid semantic foundation are implemented on `main`.
+hybrid semantic foundation plus N3 production-provider adapter wiring are implemented on `main`.
 
 ### 0.1 Completed capabilities
 
@@ -30,12 +30,13 @@ hybrid semantic foundation are implemented on `main`.
 | Public PDF corpus | Complete technically | 5 hashed PDFs, 154 eligibility records, 2,156 silver fields |
 | Provider-neutral semantic extraction | Foundation complete | Strict JSON schemas, original-language evidence, system-field rejection |
 | Independent semantic validation | Foundation complete | Separate-session enforcement and full judgment coverage |
+| Production semantic provider adapter | N3 engineering complete | OpenAI Responses adapter, CLI wiring, separate sessions, bounded retries, latency/token metadata |
 | Semantic audit trail | Foundation complete | Provider/model/session/version metadata plus request/response hashes |
 | Operational SQL contracts | Complete for implemented layers | Bronze, silver, gold, tasks, gates, regression, and semantic-call DDL |
 
 ### 0.2 Verified repository evidence
 
-- Automated suite: **34 passing tests**.
+- Automated suite: **42 passing tests**.
 - Static checks: **Ruff passing; strict mypy passing**.
 - Public corpus: **5/5 documents reach `gate_a_pending`**.
 - Public corpus output: **154 eligibility records / 2,156 silver fields**.
@@ -64,7 +65,7 @@ extraction.
 ### 0.4 Not complete
 
 - OpenAI is selected as the initial approved semantic-model provider, gated by zero-data-retention account/project settings before any production call.
-- Production semantic provider adapter exists for the OpenAI Responses API; credentials remain environment-only.
+- Production semantic provider adapter and CLI wiring exist for the OpenAI Responses API; credentials remain environment-only.
 - OCR/layout coordinate contracts and a deterministic text-line coordinate adapter are implemented; scanned/image OCR benchmark execution is still pending.
 - No owner-verified ten-document golden set or measured review-time evidence.
 - No authenticated correction/dispute UI or automated distiller feedback.
@@ -306,7 +307,9 @@ measured review time.
 Delivered: provider-neutral contracts, complete response schemas, trusted
 silver conversion, separate-session validation, semantic routing hooks,
 original-language evidence enforcement, prompt-injection/system-field
-rejection, semantic audit hashes, JSONL audit storage, and Delta DDL. Still
+rejection, OpenAI Responses API adapter, CLI configuration for separate
+extractor/validator sessions, bounded retries/timeouts, semantic latency/token
+metadata, semantic audit hashes, JSONL audit storage, and Delta DDL. Still
 required: owner-verified unseen-template corpus, scanned/layout benchmark
 results, and release approval for the first language/class pair.
 
@@ -410,21 +413,30 @@ release remains gated by owner-verified documents, benchmark results, and Gate M
 **N2 exit:** 100% reproducible locators on the benchmark and an owner-approved
 toolchain decision.
 
-### Milestone N3 — production semantic provider adapter
+### Milestone N3 — production semantic provider adapter — engineering complete; release evidence pending
 
-1. Implement the approved provider adapter for the existing `SemanticModel`
-   protocol; keep SDK types and credentials outside domain code.
-2. Add configuration/CLI wiring for separate extractor and validator model
-   sessions.
-3. Store response artifacts securely and retain the existing request/response
-   hashes and version metadata.
-4. Add bounded retries, timeouts, rate-limit handling, cost/latency metrics, and
-   fail-closed behavior.
-5. Run prompt-injection, malformed JSON, missing evidence, unsupported field,
-   same-session, and provider-identity tests against the real adapter.
+1. **Complete:** the approved OpenAI Responses API adapter implements the
+   existing `SemanticModel` protocol while keeping SDK types and credentials out
+   of domain code.
+2. **Complete:** CLI wiring creates distinct extractor and validator model
+   sessions when `--semantic-provider openai` and both model names are supplied.
+3. **Complete for local audit:** request/response hashes, provider/model/session
+   identity, schema/constitution/prompt versions, latency, and token metadata are
+   retained in the semantic call audit. Response artifact storage remains
+   controlled by the existing hash-only local audit policy until production
+   storage is selected in N5.
+4. **Complete:** the adapter has bounded retries, timeouts, transient HTTP/rate
+   limit handling, and fail-closed behavior.
+5. **Complete in automated tests:** prompt-injection/system-field rejection,
+   malformed JSON, missing evidence, unsupported fields, same-session rejection,
+   provider-identity checks, strict OpenAI payload mapping, and transient retry
+   behavior are covered.
 
-**N3 exit:** unknown English templates reach Gate A through two independent
-model sessions without any model-controlled system fields.
+**N3 exit achieved for this implementation boundary:** unknown templates can be
+routed to Gate A through two independent OpenAI model sessions without
+model-controlled system fields when credentials and ZDR policy are configured.
+Production release remains gated by N2 benchmark evidence, owner-verified
+corpora, and Gate M approval.
 
 ### Milestone N4 — owner-verified release evidence
 
@@ -460,8 +472,9 @@ document-class expansion.
 
 ## 13. Handoff Instructions for the Next LLM
 1. Read this document fully; locked decisions are binding. Lineage (Locked Decision 1) and silver-only extractors (2) are the structural core — do not weaken them for convenience.
-2. The active phase is Phase 1B, beginning with Milestone N1. Ask only for
-   unresolved N1 owner inputs; do not restart completed Phase 0/1 work.
+2. The active phase is Phase 1B. N1 and N3 are engineering-complete; prioritize
+   N2 layout/OCR benchmark evidence and N4 owner-verified release evidence next.
+   Do not restart completed Phase 0/1 work.
 3. Reuse the owner's bitemporal idioms from his FRED pipeline; match his engineering patterns (packaged Python repos, pytest suites, Delta/Databricks conventions, Bloomberg taxonomy alignment).
 4. Extractor prompts must always include: role, class constitution, canonical schema with field dictionary, the lineage/ambiguity/not_found rules, and output schema. Validator prompts must be written independently — do not share extraction heuristics between them.
 5. Optimize the owner's review throughput relentlessly: his correction bandwidth is the scarce resource, and every correction must flow into constitutions or golden sets via the distiller.

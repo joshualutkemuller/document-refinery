@@ -70,7 +70,11 @@ def test_openai_adapter_maps_responses_payload(monkeypatch: pytest.MonkeyPatch) 
             return None
 
         def read(self) -> bytes:
-            return json.dumps({"id": "resp-1", "output_text": '{"extractions": []}'}).encode()
+            return json.dumps({
+                "id": "resp-1",
+                "output_text": '{"extractions": []}',
+                "usage": {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18},
+            }).encode()
 
     def fake_urlopen(request: object, timeout: float) -> FakeResponse:
         captured["timeout"] = timeout
@@ -79,7 +83,9 @@ def test_openai_adapter_maps_responses_payload(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    model = OpenAISemanticModel(model="gpt-5.5", session_id="extractor-session")
+    model = OpenAISemanticModel(
+        model="gpt-5.5", session_id="extractor-session", retry_base_delay_seconds=0
+    )
     response = model.generate(
         SemanticRequest(
             session_id="extractor-session",
@@ -93,10 +99,57 @@ def test_openai_adapter_maps_responses_payload(monkeypatch: pytest.MonkeyPatch) 
     assert response.provider == "openai"
     assert response.model == "gpt-5.5"
     assert response.response_id == "resp-1"
+    assert response.usage == {"input_tokens": 11, "output_tokens": 7, "total_tokens": 18}
+    assert response.latency_ms is not None
     body = captured["body"]
     assert isinstance(body, dict)
     assert body["text"]["format"]["strict"] is True  # type: ignore[index]
     assert body["metadata"]["document_refinery_session_id"] == "extractor-session"  # type: ignore[index]
+
+
+def test_openai_adapter_retries_transient_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"id": "resp-2", "output_text": '{"judgments": []}'}).encode()
+
+    def fake_urlopen(request: object, timeout: float) -> FakeResponse:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TimeoutError("transient timeout")
+        return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    model = OpenAISemanticModel(
+        model="gpt-5.5",
+        session_id="validator-session",
+        max_retries=1,
+        retry_base_delay_seconds=0,
+    )
+
+    response = model.generate(
+        SemanticRequest(
+            session_id="validator-session",
+            system_prompt="system",
+            user_payload="payload",
+            response_schema={"type": "object"},
+            prompt_version="v1",
+        )
+    )
+
+    assert attempts == 2
+    assert response.response_id == "resp-2"
 
 
 class FailingLayoutAdapter:

@@ -7,8 +7,10 @@ import json
 from importlib.resources import files
 from pathlib import Path
 
+from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
 from document_refinery.application.pipeline import RefineryPipeline
 from document_refinery.domain.models import SilverExtraction
+from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
@@ -30,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--source", default="local")
     run.add_argument("--approved-by")
     run.add_argument("--language", default="und")
+    _add_semantic_options(run)
 
     approve = subcommands.add_parser(
         "approve",
@@ -45,7 +48,26 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--source", default="local")
     watch.add_argument("--approved-by")
     watch.add_argument("--language", default="und")
+    _add_semantic_options(watch)
     return parser
+
+
+def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--semantic-provider",
+        choices=("openai",),
+        help="enable semantic routing for unknown templates with an approved provider",
+    )
+    parser.add_argument("--semantic-extractor-model")
+    parser.add_argument("--semantic-validator-model")
+    parser.add_argument("--semantic-schema-version", default="eligibility-1.0.0")
+    parser.add_argument("--semantic-constitution-version", default="eligibility-1.1.0")
+    parser.add_argument(
+        "--semantic-timeout-seconds",
+        type=float,
+        default=60.0,
+    )
+    parser.add_argument("--semantic-max-retries", type=int, default=2)
 
 
 def main() -> int:
@@ -83,6 +105,13 @@ def main() -> int:
             source=args.source,
             approved_by=args.approved_by,
             language=args.language,
+            semantic_provider=args.semantic_provider,
+            semantic_extractor_model=args.semantic_extractor_model,
+            semantic_validator_model=args.semantic_validator_model,
+            semantic_schema_version=args.semantic_schema_version,
+            semantic_constitution_version=args.semantic_constitution_version,
+            semantic_timeout_seconds=args.semantic_timeout_seconds,
+            semantic_max_retries=args.semantic_max_retries,
         )
     elif args.command == "approve":
         pipeline = RefineryPipeline(args.workspace)
@@ -107,6 +136,13 @@ def main() -> int:
             source=args.source,
             approved_by=args.approved_by,
             language=args.language,
+            semantic_provider=args.semantic_provider,
+            semantic_extractor_model=args.semantic_extractor_model,
+            semantic_validator_model=args.semantic_validator_model,
+            semantic_schema_version=args.semantic_schema_version,
+            semantic_constitution_version=args.semantic_constitution_version,
+            semantic_timeout_seconds=args.semantic_timeout_seconds,
+            semantic_max_retries=args.semantic_max_retries,
         )
     return 0
 
@@ -118,8 +154,28 @@ def _run_documents(
     source: str,
     approved_by: str | None,
     language: str,
+    semantic_provider: str | None,
+    semantic_extractor_model: str | None,
+    semantic_validator_model: str | None,
+    semantic_schema_version: str,
+    semantic_constitution_version: str,
+    semantic_timeout_seconds: float,
+    semantic_max_retries: int,
 ) -> None:
-    pipeline = RefineryPipeline(workspace)
+    semantic_extractor, semantic_validator = _build_semantic_components(
+        provider=semantic_provider,
+        extractor_model=semantic_extractor_model,
+        validator_model=semantic_validator_model,
+        schema_version=semantic_schema_version,
+        constitution_version=semantic_constitution_version,
+        timeout_seconds=semantic_timeout_seconds,
+        max_retries=semantic_max_retries,
+    )
+    pipeline = RefineryPipeline(
+        workspace,
+        semantic_extractor=semantic_extractor,
+        semantic_validator=semantic_validator,
+    )
     all_rows: list[SilverExtraction] = []
     try:
         for path in paths:
@@ -161,6 +217,61 @@ def _run_documents(
             print(f"Quality report: {quality_path}")
     finally:
         pipeline.close()
+
+
+def _build_semantic_components(
+    *,
+    provider: str | None,
+    extractor_model: str | None,
+    validator_model: str | None,
+    schema_version: str,
+    constitution_version: str,
+    timeout_seconds: float,
+    max_retries: int,
+) -> tuple[SemanticExtractor | None, SemanticValidator | None]:
+    if provider is None:
+        if extractor_model or validator_model:
+            raise ValueError("--semantic-provider is required when semantic models are set")
+        return None, None
+    if provider != "openai":
+        raise ValueError(f"unsupported semantic provider: {provider}")
+    if not extractor_model or not validator_model:
+        raise ValueError("both extractor and validator semantic models are required")
+    if max_retries < 0:
+        raise ValueError("semantic max retries must be non-negative")
+    schema_dictionary = (
+        "eligibility[].asset_criterion, eligible, haircut_pct, concentration_limit_pct, "
+        "concentration_basis, currency_scope, rating_floor, tenor_cap_days, valid_from, valid_to"
+    )
+    constitution = (
+        "Extract collateral eligibility schedule terms only. Preserve original-language "
+        "evidence, emit explicit not_found fields, and never emit system-controlled fields."
+    )
+    extractor = SemanticExtractor(
+        OpenAISemanticModel(
+            model=extractor_model,
+            session_id="openai-extractor-session",
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        ),
+        constitution=constitution,
+        schema_dictionary=schema_dictionary,
+        schema_version=schema_version,
+        constitution_version=constitution_version,
+        extractor_version=f"openai-{extractor_model}-{constitution_version}",
+    )
+    validator = SemanticValidator(
+        OpenAISemanticModel(
+            model=validator_model,
+            session_id="openai-validator-session",
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        ),
+        schema_dictionary=schema_dictionary,
+        schema_version=schema_version,
+        constitution_version=constitution_version,
+    )
+    return extractor, validator
 
 
 if __name__ == "__main__":

@@ -51,6 +51,8 @@ class SemanticResponse:
     model: str
     response_id: str
     created_at: datetime
+    latency_ms: int | None = None
+    usage: dict[str, int] | None = None
 
 
 class SemanticModel(Protocol):
@@ -83,6 +85,10 @@ class SemanticCallRecord:
     request_hash: str
     response_hash: str
     created_at: datetime
+    latency_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,6 +413,10 @@ def _call_record(
         request_hash=hashlib.sha256(request_bytes).hexdigest(),
         response_hash=hashlib.sha256(response.content.encode()).hexdigest(),
         created_at=response.created_at,
+        latency_ms=response.latency_ms,
+        input_tokens=(response.usage or {}).get("input_tokens"),
+        output_tokens=(response.usage or {}).get("output_tokens"),
+        total_tokens=(response.usage or {}).get("total_tokens"),
     )
 
 
