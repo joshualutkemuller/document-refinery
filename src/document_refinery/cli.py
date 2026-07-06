@@ -32,6 +32,7 @@ from document_refinery.infrastructure.chat_completions import (
     build_openai_compatible_model,
 )
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
+from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.dashboard import render_dashboard
@@ -91,6 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--workspace", type=Path, required=True)
     approve.add_argument("--approved-by", required=True)
     _add_storage_options(approve)
+
+    memory = subcommands.add_parser(
+        "memory",
+        help="inspect what the system has learned from past corrections",
+    )
+    memory.add_argument("--workspace", type=Path, required=True)
+    memory.add_argument("--json", action="store_true", dest="as_json")
 
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
@@ -212,6 +220,8 @@ def main() -> int:
         )
     elif args.command == "review":
         return _run_review(args)
+    elif args.command == "memory":
+        return _run_memory(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -370,7 +380,7 @@ def _run_review(args: argparse.Namespace) -> int:
     try:
         if args.list_only:
             rows = pipeline.review_rows(args.doc_id)
-            print(render_review(rows))
+            print(render_review(rows, suggestions=pipeline.memory_suggestions(rows)))
             return 0
         if not args.reviewer:
             print("error: --reviewer is required to apply review actions")
@@ -384,6 +394,7 @@ def _run_review(args: argparse.Namespace) -> int:
                 prompt=input,
                 echo=print,
                 pending_only=args.pending_only,
+                suggestions=pipeline.memory_suggestions(rows),
             )
         if not requests:
             print(json.dumps({"doc_id": args.doc_id, "applied": 0, "actions": {}}))
@@ -397,6 +408,30 @@ def _run_review(args: argparse.Namespace) -> int:
         return 0
     finally:
         pipeline.close()
+
+
+def _run_memory(args: argparse.Namespace) -> int:
+    store = CorrectionMemoryStore(args.workspace / "memory" / "corrections_memory.jsonl")
+    entries = store.load().entries()
+    if args.as_json:
+        print(json.dumps([e.to_json() for e in entries], indent=2))
+        return 0
+    if not entries:
+        print("No corrections learned yet.")
+        return 0
+    print(f"Learned corrections ({len(entries)}):")
+    for e in entries:
+        if e.is_fix:
+            print(
+                f"  [{e.doc_class}] {e.field_suffix}: '{e.original_value}' -> "
+                f"'{e.corrected_value}'  ({e.occurrences}×, last by {e.last_reviewer})"
+            )
+        else:
+            print(
+                f"  [{e.doc_class}] {e.field_suffix}: '{e.original_value}' "
+                f"disputed ({e.occurrences}×, last by {e.last_reviewer})"
+            )
+    return 0
 
 
 def _review_summary(doc_id: str, outcome: CorrectionOutcome) -> dict[str, object]:

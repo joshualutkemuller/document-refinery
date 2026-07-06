@@ -114,6 +114,25 @@ reviewer approves and lands gold:
 document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
 ```
 
+### The system learns from corrections
+
+Every correction is folded into a **persistent correction memory** keyed by
+`(document class, field, original value)`. When a later document produces a value
+that was previously corrected for the same field, review surfaces the learned fix
+— and pressing Enter on a correction accepts the remembered value — so the same
+mistake is caught again instead of re-reviewed from scratch (the distiller loop:
+a correction becomes reusable knowledge, never evaporates). Disputes are
+remembered as "review carefully" flags. Inspect what the system has learned:
+
+```bash
+document-refinery memory --workspace .refinery          # human-readable
+document-refinery memory --workspace .refinery --json   # machine-readable
+```
+
+The memory lives at `<workspace>/memory/corrections_memory.jsonl` and accumulates
+across every run and session. It only *suggests* — the owner still gates every
+value; it never mutates silver or writes gold.
+
 ### Running an unknown layout (semantic path)
 
 Documents that do not match a deterministic profile route to classification
