@@ -13,7 +13,10 @@ from document_refinery.application.corrections import (
     CorrectionOutcome,
     CorrectionRequest,
 )
-from document_refinery.application.pipeline import RefineryPipeline
+from document_refinery.application.pipeline import (
+    ClassificationReviewRequired,
+    RefineryPipeline,
+)
 from document_refinery.application.review_session import build_review_requests, render_review
 from document_refinery.domain.models import SilverExtraction
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
@@ -212,12 +215,26 @@ def _run_documents(
     all_rows: list[SilverExtraction] = []
     try:
         for path in paths:
-            result = pipeline.run(
-                path,
-                source=source,
-                approved_by=approved_by,
-                language=language,
-            )
+            try:
+                result = pipeline.run(
+                    path,
+                    source=source,
+                    approved_by=approved_by,
+                    language=language,
+                )
+            except ClassificationReviewRequired as review:
+                # Unknown layout with no semantic extractor configured: report and
+                # keep processing the batch instead of aborting on one document.
+                print(
+                    json.dumps(
+                        {
+                            "path": str(path),
+                            "task_status": "classification_review_required",
+                            "confidence": round(review.confidence, 2),
+                        }
+                    )
+                )
+                continue
             all_rows.extend(result.silver_rows)
             print(
                 json.dumps(

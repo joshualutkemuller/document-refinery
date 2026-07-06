@@ -125,7 +125,14 @@ document-refinery watch example_schedules \
 The public corpus covers portfolio concentration guidelines, CME performance
 bond collateral, FICC and DTC haircut schedules, and an ISDA VM collateral
 table. Each document reaches Gate A with clause-level source locators; nothing is
-automatically approved.
+automatically approved. A sixth entry (`Example6`) is a synthetic unknown-layout
+fixture that stops at classification review — the same conservative path real
+CSAs, triparty schedules, and central-bank haircut tables take until a semantic
+extractor is configured.
+
+To grow the corpus with real documents, see
+[`docs/test-corpus-downloads.md`](docs/test-corpus-downloads.md) for a curated
+download list and wire each one in with `scripts/add_corpus_document.py`.
 
 ## CLI
 
