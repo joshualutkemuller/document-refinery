@@ -7,7 +7,11 @@ import json
 from importlib.resources import files
 from pathlib import Path
 
-from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
+from document_refinery.agents.semantic import (
+    SemanticExtractor,
+    SemanticModel,
+    SemanticValidator,
+)
 from document_refinery.application.corrections import (
     CorrectionAction,
     CorrectionOutcome,
@@ -17,8 +21,10 @@ from document_refinery.application.pipeline import (
     ClassificationReviewRequired,
     RefineryPipeline,
 )
+from document_refinery.application.promotion import PromotionError
 from document_refinery.application.review_session import build_review_requests, render_review
 from document_refinery.domain.models import SilverExtraction
+from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.regression import run_packaged_regression
@@ -89,8 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
 def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--semantic-provider",
-        choices=("openai",),
-        help="enable semantic routing for unknown templates with an approved provider",
+        choices=("openai", "local"),
+        help=(
+            "enable semantic routing for unknown templates. 'openai' is the "
+            "approved production provider (needs OPENAI_API_KEY + network); "
+            "'local' is an offline heuristic double for local pipeline testing"
+        ),
     )
     parser.add_argument("--semantic-extractor-model")
     parser.add_argument("--semantic-validator-model")
@@ -152,7 +162,19 @@ def main() -> int:
     elif args.command == "approve":
         pipeline = RefineryPipeline(args.workspace)
         try:
-            gold_rows = pipeline.approve(args.doc_id, approved_by=args.approved_by)
+            try:
+                gold_rows = pipeline.approve(args.doc_id, approved_by=args.approved_by)
+            except PromotionError as error:
+                print(
+                    json.dumps(
+                        {
+                            "doc_id": args.doc_id,
+                            "task_status": "gold_promotion_blocked",
+                            "reason": str(error),
+                        }
+                    )
+                )
+                return 1
             print(
                 json.dumps(
                     {
@@ -345,10 +367,8 @@ def _build_semantic_components(
         if extractor_model or validator_model:
             raise ValueError("--semantic-provider is required when semantic models are set")
         return None, None
-    if provider != "openai":
+    if provider not in {"openai", "local"}:
         raise ValueError(f"unsupported semantic provider: {provider}")
-    if not extractor_model or not validator_model:
-        raise ValueError("both extractor and validator semantic models are required")
     if max_retries < 0:
         raise ValueError("semantic max retries must be non-negative")
     schema_dictionary = (
@@ -359,26 +379,43 @@ def _build_semantic_components(
         "Extract collateral eligibility schedule terms only. Preserve original-language "
         "evidence, emit explicit not_found fields, and never emit system-controlled fields."
     )
-    extractor = SemanticExtractor(
-        OpenAISemanticModel(
+    if provider == "openai":
+        if not extractor_model or not validator_model:
+            raise ValueError("both extractor and validator semantic models are required")
+        extractor_model_name, validator_model_name = extractor_model, validator_model
+        extractor_backend: SemanticModel = OpenAISemanticModel(
             model=extractor_model,
             session_id="openai-extractor-session",
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
-        ),
-        constitution=constitution,
-        schema_dictionary=schema_dictionary,
-        schema_version=schema_version,
-        constitution_version=constitution_version,
-        extractor_version=f"openai-{extractor_model}-{constitution_version}",
-    )
-    validator = SemanticValidator(
-        OpenAISemanticModel(
+        )
+        validator_backend: SemanticModel = OpenAISemanticModel(
             model=validator_model,
             session_id="openai-validator-session",
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
-        ),
+        )
+    else:  # local offline heuristic double (no API key / network)
+        extractor_model_name = extractor_model or "local-heuristic-v1"
+        validator_model_name = validator_model or "local-heuristic-v1"
+        extractor_backend = LocalHeuristicSemanticModel(
+            model=extractor_model_name,
+            session_id="local-extractor-session",
+        )
+        validator_backend = LocalHeuristicSemanticModel(
+            model=validator_model_name,
+            session_id="local-validator-session",
+        )
+    extractor = SemanticExtractor(
+        extractor_backend,
+        constitution=constitution,
+        schema_dictionary=schema_dictionary,
+        schema_version=schema_version,
+        constitution_version=constitution_version,
+        extractor_version=f"{provider}-{extractor_model_name}-{constitution_version}",
+    )
+    validator = SemanticValidator(
+        validator_backend,
         schema_dictionary=schema_dictionary,
         schema_version=schema_version,
         constitution_version=constitution_version,
