@@ -117,25 +117,48 @@ document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
 ### Running an unknown layout (semantic path)
 
 Documents that do not match a deterministic profile route to classification
-review and stop unless a semantic extractor is configured. Two providers:
+review and stop unless a semantic extractor is configured. Choose a provider with
+`--semantic-provider`; the bare flag defaults to `ollama`, the most secure option
+(the model runs locally and document text never leaves your machine):
+
+| Provider | Data leaves machine? | Needs | Use for |
+|---|---|---|---|
+| `ollama` (default) | No — local model | Ollama running + a pulled model | Real extraction on confidential docs |
+| `openai` | Yes (OpenAI, ZDR-approved) | `OPENAI_API_KEY` + network | Approved production path |
+| `openai-compatible` | Yes (third party) | `--semantic-base-url` + `OPENAI_COMPATIBLE_API_KEY` | Free/hosted testing on non-confidential docs |
+| `local` | No — offline heuristic | nothing | Pipeline plumbing tests (not a real LLM) |
 
 ```bash
-# Production: approved OpenAI provider (needs OPENAI_API_KEY + network + ZDR policy)
+# Ollama — local model, data stays on your machine (secure default)
+document-refinery run doc.pdf --workspace .refinery \
+  --semantic-provider ollama \
+  --semantic-extractor-model llama3.1 --semantic-validator-model llama3.1
+
+# OpenAI — approved ZDR production provider
+export OPENAI_API_KEY=sk-...
 document-refinery run doc.pdf --workspace .refinery \
   --semantic-provider openai \
-  --semantic-extractor-model gpt-5.5 --semantic-validator-model gpt-5.5
+  --semantic-extractor-model <model> --semantic-validator-model <model>
 
-# Local: offline heuristic double for testing the pipeline with no key/network
+# Generic OpenAI-compatible endpoint (Groq/Together/OpenRouter) — data leaves your machine
+export OPENAI_COMPATIBLE_API_KEY=...
+document-refinery run doc.pdf --workspace .refinery \
+  --semantic-provider openai-compatible \
+  --semantic-base-url https://api.groq.com/openai/v1/chat/completions \
+  --semantic-extractor-model <model> --semantic-validator-model <model>
+
+# Local heuristic double — no key, no network (pipeline testing only)
 document-refinery run example_schedules/Example6_synthetic-triparty-eligibility-profile.txt \
   --workspace .refinery --semantic-provider local
 ```
 
-The local provider runs the full unknown-layout route — separate extractor and
-validator sessions, strict schema-to-silver conversion, semantic audit records,
-and Gate A — so you can exercise the plumbing without a provider account. It is a
-heuristic test double for the pipe-delimited/`Key: Value` schedule layout, **not**
-a production extractor and it makes no accuracy claim; use `openai` for real
-documents. Gold promotion still requires the economic fields (`margin_type`,
+All providers run the same route — separate extractor and validator sessions,
+strict schema-to-silver conversion, semantic audit records, and Gate A. The
+`openai-compatible` provider prints a notice that document text leaves the
+machine and is **not** covered by the approved OpenAI ZDR policy; prefer `ollama`
+for confidential agreements. The `local` provider is a heuristic double for the
+pipe-delimited/`Key: Value` layout, not a production extractor, and makes no
+accuracy claim. Gold promotion still requires the economic fields (`margin_type`,
 `schedule_version`, `valid_from`, …); when they are absent, `approve` reports
 `gold_promotion_blocked` and the document stays recoverable at Gate A.
 
