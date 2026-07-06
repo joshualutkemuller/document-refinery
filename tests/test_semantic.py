@@ -12,10 +12,32 @@ from document_refinery.agents.semantic import (
     SemanticRequest,
     SemanticResponse,
     SemanticValidator,
+    _extraction_response_schema,
+    _validation_response_schema,
 )
 from document_refinery.application.pipeline import RefineryPipeline
 from document_refinery.domain.models import ValidatorStatus
 from document_refinery.infrastructure.tasks import TaskStatus
+
+
+def _assert_strict_mode_compatible(node: object) -> None:
+    """OpenAI strict structured outputs: every object with additionalProperties
+    False must list every property in `required`."""
+    if isinstance(node, dict):
+        if node.get("type") == "object" and node.get("additionalProperties") is False:
+            props = set(node.get("properties", {}))
+            required = set(node.get("required", []))
+            assert props == required, f"strict-mode mismatch: {props ^ required}"
+        for value in node.values():
+            _assert_strict_mode_compatible(value)
+    elif isinstance(node, list):
+        for item in node:
+            _assert_strict_mode_compatible(item)
+
+
+def test_response_schemas_are_openai_strict_compatible() -> None:
+    _assert_strict_mode_compatible(_extraction_response_schema())
+    _assert_strict_mode_compatible(_validation_response_schema())
 
 
 class ScriptedModel:
