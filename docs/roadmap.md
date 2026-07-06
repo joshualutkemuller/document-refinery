@@ -23,7 +23,7 @@
 - [ ] Select two or three pilot counterparties
 - [ ] Confirm verbatim-clause data-handling policy
 - [x] Initial Gate A review UX (generated HTML and JSON)
-- [x] Authenticated correction/dispute workflow (interactive packet + trusted CLI + correction log)
+- [x] Authenticated correction/dispute workflow (terminal `review` CLI + read-only packet + correction log)
 - [ ] Curate at least ten owner-verified schedule extractions
 - [ ] Provide the FRED pipeline bitemporal helpers for convention alignment
 - [ ] Name the first Autopilot rule-engine contract/version

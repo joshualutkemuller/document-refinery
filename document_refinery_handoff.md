@@ -32,7 +32,7 @@ hybrid semantic foundation plus N3 production-provider adapter wiring are implem
 | Independent semantic validation | Foundation complete | Separate-session enforcement and full judgment coverage |
 | Production semantic provider adapter | N3 engineering complete | OpenAI Responses adapter, CLI wiring, separate sessions, bounded retries, latency/token metadata |
 | Semantic audit trail | Foundation complete | Provider/model/session/version metadata plus request/response hashes |
-| Owner correction/dispute workflow | Local baseline complete | Authenticated confirm/correct/dispute on silver rows; interactive review packet; append-only correction log; disputes block Gate A |
+| Owner correction/dispute workflow | Local baseline complete | Authenticated confirm/correct/dispute on silver rows via a terminal review CLI; read-only review packet; append-only correction log; disputes block Gate A |
 | Operational SQL contracts | Complete for implemented layers | Bronze, silver, gold, tasks, gates, regression, semantic-call, and correction-action DDL |
 
 ### 0.2 Verified repository evidence
@@ -69,9 +69,9 @@ extraction.
 - Production semantic provider adapter and CLI wiring exist for the OpenAI Responses API; credentials remain environment-only.
 - OCR/layout coordinate contracts and a deterministic text-line coordinate adapter are implemented; scanned/image OCR benchmark execution is still pending.
 - No owner-verified ten-document golden set or measured review-time evidence.
-- Authenticated correction/dispute workflow exists as a local CLI baseline
-  (interactive review packet plus trusted-CLI application and durable correction
-  log); no hosted/authenticated UI or automated distiller feedback yet.
+- Authenticated correction/dispute workflow exists as a terminal CLI baseline
+  (interactive `review` command plus a read-only review packet and durable
+  correction log); no hosted/authenticated UI or automated distiller feedback yet.
 - No production object storage, managed Delta jobs, access controls, monitoring,
   or retry orchestration.
 - No full CSA economics gold schema (threshold, MTA, IA, rounding, interest,
@@ -449,12 +449,15 @@ corpora, and Gate M approval.
 ### Milestone N4 — owner-verified release evidence
 
 1. **Local baseline complete:** an authenticated confirm/correct/dispute
-   workflow on the current review packet. The interactive packet exports a
-   corrections file; a trusted CLI (`review`) applies it under an identified
-   reviewer, preserving raw/normalized lineage, writing a `reviewed` silver
-   stage, and recording every action in an append-only correction log. Disputes
-   keep the document in `gate_a_pending` and block approval until resolved. A
-   hosted/authenticated UI and the distiller feedback wiring remain to build.
+   workflow driven entirely from the terminal. The `review` CLI walks each field
+   (value, status, locator, clause) and prompts the identified reviewer to
+   confirm, correct, or dispute it (`--list` for a read-only view,
+   `--pending-only` for re-review passes, `--corrections FILE` for scripted
+   application). Actions preserve raw/normalized lineage, write a `reviewed`
+   silver stage, and append to a durable correction log. The generated review
+   packet is a read-only artifact. Disputes keep the document in
+   `gate_a_pending` and block approval until resolved. A hosted/authenticated UI
+   and the distiller feedback wiring remain to build.
 2. Curate ≥10 owner-verified English eligibility schedules and ≥10 for the first
    non-English language/class pair.
 3. Measure field accuracy, locator accuracy, ambiguity/dispute rate, review

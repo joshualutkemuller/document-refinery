@@ -201,7 +201,7 @@ class RefineryPipeline:
         task = self.tasks.get(doc_id)
         if task.status is not TaskStatus.GATE_A_PENDING:
             raise ValueError(f"document is not awaiting Gate A: {task.status}")
-        current = self._review_rows(doc_id)
+        current = self.review_rows(doc_id)
         outcome = self.corrections.apply(
             extractions=current,
             requests=requests,
@@ -219,7 +219,7 @@ class RefineryPipeline:
         task = self.tasks.get(doc_id)
         if task.status is not TaskStatus.GATE_A_PENDING:
             raise ValueError(f"document is not awaiting Gate A: {task.status}")
-        reviewed = self._review_rows(doc_id)
+        reviewed = self.review_rows(doc_id)
         self.gate.decide(
             extractions=reviewed,
             decided_by=approved_by,
@@ -235,7 +235,7 @@ class RefineryPipeline:
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows
 
-    def _review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
+    def review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
         """Latest silver under review: the corrected stage if any, else validated."""
         try:
             return self.silver.read(doc_id, stage="reviewed")

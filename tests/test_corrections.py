@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from document_refinery.application.corrections import (
     CorrectionService,
 )
 from document_refinery.application.pipeline import RefineryPipeline
+from document_refinery.application.review_session import build_review_requests, render_review
 from document_refinery.domain.models import (
     SilverExtraction,
     ValidatorStatus,
@@ -19,6 +19,20 @@ from document_refinery.domain.models import (
 )
 from document_refinery.infrastructure.correction_log import CorrectionLog
 from document_refinery.infrastructure.tasks import TaskStatus
+
+
+class _ScriptedPrompt:
+    """Feeds canned answers to build_review_requests; records echoed lines."""
+
+    def __init__(self, answers: list[str]) -> None:
+        self.answers = answers
+        self.echoed: list[str] = []
+
+    def prompt(self, _message: str) -> str:
+        return self.answers.pop(0)
+
+    def echo(self, message: str) -> None:
+        self.echoed.append(message)
 
 TEXT = """Collateral Eligibility Schedule
 Eligible Collateral
@@ -206,20 +220,72 @@ def test_apply_corrections_requires_gate_a_pending(tmp_path: Path) -> None:
         pipeline.close()
 
 
-def test_interactive_review_packet_exposes_controls(tmp_path: Path) -> None:
+def test_review_packet_is_read_only_html(tmp_path: Path) -> None:
     source = tmp_path / "schedule.txt"
     source.write_text(TEXT, encoding="utf-8")
     pipeline = RefineryPipeline(tmp_path / "workspace")
     try:
         result = pipeline.run(source, source="test")
         markup = result.review_html.read_text(encoding="utf-8")
-        assert 'class="action"' in markup
-        assert "collectCorrections" in markup
-        assert "data-extraction-id" in markup
-        # doc_id is embedded as a JSON literal for the exporter.
-        assert json.dumps(result.document.doc_id) in markup
+        # No web-app controls: the packet is a read-only artifact, actions are CLI.
+        assert "<script" not in markup
+        assert "<input" not in markup
+        assert "<button" not in markup
+        assert "document-refinery review" in markup
+        assert "<table>" in markup
     finally:
         pipeline.close()
+
+
+def test_interactive_session_collects_each_action(
+    extraction: Callable[..., SilverExtraction],
+) -> None:
+    rows = (
+        extraction(extraction_id="a", validator_status=ValidatorStatus.PENDING),
+        extraction(extraction_id="b", validator_status=ValidatorStatus.PENDING),
+        extraction(extraction_id="c", validator_status=ValidatorStatus.PENDING),
+    )
+    # confirm a; correct b (value + note); dispute c (reason)
+    scripted = _ScriptedPrompt(["c", "o", "GOVT_US_TIPS", "issuer note", "d", "band conflict"])
+    requests = build_review_requests(rows, prompt=scripted.prompt, echo=scripted.echo)
+    assert [r.action for r in requests] == [
+        CorrectionAction.CONFIRM,
+        CorrectionAction.CORRECT,
+        CorrectionAction.DISPUTE,
+    ]
+    assert requests[1].corrected_value == "GOVT_US_TIPS"
+    assert requests[2].note == "band conflict"
+
+
+def test_interactive_session_skips_confirmed_and_reprompts_and_quits(
+    extraction: Callable[..., SilverExtraction],
+) -> None:
+    rows = (
+        extraction(extraction_id="a", validator_status=ValidatorStatus.CONFIRMED),
+        extraction(extraction_id="b", validator_status=ValidatorStatus.PENDING),
+        extraction(extraction_id="c", validator_status=ValidatorStatus.PENDING),
+    )
+    # 'a' is skipped (already confirmed, pending_only). For 'b': choosing correct
+    # with an empty value re-prompts the menu; choose correct again with a real
+    # value and no note. Then quit before reaching 'c'.
+    scripted = _ScriptedPrompt(["o", "", "o", "AA-", "", "q"])
+    requests = build_review_requests(
+        rows, prompt=scripted.prompt, echo=scripted.echo, pending_only=True
+    )
+    assert len(requests) == 1
+    assert requests[0].extraction_id == "b"
+    assert requests[0].corrected_value == "AA-"
+    assert any("needs a value" in line for line in scripted.echoed)
+
+
+def test_render_review_marks_disputes(
+    extraction: Callable[..., SilverExtraction],
+) -> None:
+    rendered = render_review(
+        (extraction(extraction_id="a", validator_status=ValidatorStatus.DISPUTED),)
+    )
+    assert "disputed" in rendered
+    assert "eligibility[0].asset_criterion" in rendered
 
 
 def test_not_found_row_can_be_corrected(

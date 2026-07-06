@@ -9,7 +9,8 @@ The repository provides a complete local Phase 0/1 reference implementation:
 - immutable content-addressed bronze, text, and layout artifacts;
 - landing-zone discovery and a durable task-state workflow;
 - conservative profile classification and clause-level extraction;
-- independent validation and HTML/JSON Gate A review packets;
+- independent validation, a terminal Gate A review (confirm/correct/dispute),
+  and read-only HTML/JSON review packets;
 - deterministic, lineage-complete bitemporal gold promotion;
 - executive, dashboard, and audit quality outputs;
 - ten synthetic regression cases and five provenance-tracked public PDFs.
@@ -94,8 +95,20 @@ Process one schedule and stop for Gate A review:
 document-refinery run schedule.txt --workspace .refinery
 ```
 
-After reviewing the generated HTML packet, an identified reviewer can approve
-and land gold:
+Review the extraction in the terminal — the `review` CLI walks each field
+(value, status, locator, clause) and prompts the identified reviewer to
+`[c]onfirm`, `c[o]rrect`, or `[d]ispute` it. Disputes block approval until
+resolved:
+
+```bash
+document-refinery review DOC_ID --workspace .refinery --list        # read-only view
+document-refinery review DOC_ID --workspace .refinery --reviewer "Joshua"
+```
+
+Corrections preserve the original clause lineage, are recorded in an append-only
+correction log, and can also be applied non-interactively with
+`--corrections FILE`. Once every field is confirmed or corrected, an identified
+reviewer approves and lands gold:
 
 ```bash
 document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
@@ -122,6 +135,7 @@ automatically approved.
 | `document-refinery regression --json` | Run the synthetic ten-document regression corpus |
 | `document-refinery run FILE --workspace DIR [--language TAG] [--semantic-provider openai]` | Process one document and stop at Gate A |
 | `document-refinery watch LANDING --workspace DIR [--language TAG] [--semantic-provider openai]` | Process every supported landing-zone document |
+| `document-refinery review DOC_ID --workspace DIR [--list] [--reviewer NAME] [--pending-only] [--corrections FILE]` | Confirm/correct/dispute silver rows in the terminal before Gate A |
 | `document-refinery approve DOC_ID --workspace DIR --approved-by NAME` | Record Gate A approval and promote eligible rows |
 
 The workspace contains content-addressed raw/text/layout artifacts, SQLite task
@@ -204,9 +218,10 @@ docs/              ADRs, validation evidence, roadmap, and toolchain rubric
    re-derivation with a separately prompted model.
 9. **Uncalibrated confidence.** Rule-based confidence values are fixed and are
    not calibrated probabilities.
-10. **Local review UX.** Gate A is generated HTML/JSON plus a CLI approval. There
-    is no authenticated correction UI, dispute queue, or automatic distiller
-    feedback loop.
+10. **Local review UX.** Gate A review runs in the terminal (`review` CLI:
+    confirm/correct/dispute with a durable correction log) plus a read-only
+    HTML/JSON packet and CLI approval. There is no hosted authenticated UI,
+    dispute queue, or automatic distiller feedback loop yet.
 11. **Local operational adapters.** Object storage, managed Delta merge jobs,
     access controls, monitoring, retries, and secrets management are not
     productionized.
