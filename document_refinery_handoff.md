@@ -399,19 +399,24 @@ results, and release approval for the first language/class pair.
 approved provider and data-handling policy needed to build N2/N3. Production
 release remains gated by owner-verified documents, benchmark results, and Gate M.
 
-### Milestone N2 — production document understanding
+### Milestone N2 — production document understanding — engineering complete; owner evidence pending
 
-1. Implement the selected OCR/layout adapter behind a provider-neutral
-   interface.
-2. Persist page coordinates, table cells, merged-cell relationships, confidence,
-   and reading order as versioned bronze artifacts.
-3. Run and publish the three-document benchmark using text fidelity, table
-   fidelity, locator reproducibility, latency, cost, and data-handling criteria.
-4. Keep image-only or structurally failed documents out of semantic extraction
-   until the artifact passes quality thresholds.
+1. **Complete:** the selected PDF layout adapter is implemented behind the
+   provider-neutral `LayoutAdapter` interface.
+2. **Complete:** versioned bronze layout artifacts persist page geometry,
+   line/token coordinates, table cells, merged-cell fields, confidence, and
+   deterministic reading order.
+3. **Complete for engineering start:** the benchmark runner publishes text, table,
+   locator reproducibility, latency, cost, and layout artifact hash evidence. The
+   owner-approved three-document evidence pack remains external to the repository.
+4. **Complete:** image-only or structurally failed documents fail the layout
+   quality gate and are kept out of semantic extraction until a passing artifact
+   exists.
 
-**N2 exit:** 100% reproducible locators on the benchmark and an owner-approved
-toolchain decision.
+**N2 exit achieved for this implementation boundary:** reproducible locator
+checks and the selected toolchain harness are implemented. Production release
+remains gated by the owner-approved three-document benchmark decision, including
+any required OCR adapter for image-only schedules.
 
 ### Milestone N3 — production semantic provider adapter — engineering complete; release evidence pending
 

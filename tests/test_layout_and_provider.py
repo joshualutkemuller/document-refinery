@@ -215,4 +215,8 @@ def test_layout_benchmark_publishes_threshold_results(tmp_path: Path) -> None:
 
     assert results[0].status == "passed"
     output = tmp_path / "benchmark-workspace" / "layout_benchmark_results.json"
-    assert json.loads(output.read_text(encoding="utf-8"))[0]["reading_order_locators"] == 2
+    payload = json.loads(output.read_text(encoding="utf-8"))[0]
+    assert payload["reading_order_locators"] == 2
+    assert payload["locator_reproducibility"] == 1.0
+    assert payload["estimated_cost_usd"] == 0.0
+    assert len(payload["artifact_sha256"]) == 64
