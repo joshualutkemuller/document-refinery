@@ -17,7 +17,7 @@ text-bearing PDFs. All locked architectural decisions are enforced in code.
 | Handoff requirement | Implementation |
 |---|---|
 | Immutable bronze | SHA-256 content-addressed raw objects; collision checks |
-| Versioned text/layout | Hash-addressed text and line-layout artifacts |
+| Versioned text/layout | Hash-addressed text plus coordinate-rich line/table layout artifacts |
 | Landing watcher | Stable discovery for TXT, Markdown, and PDF |
 | Task chassis | Durable SQLite state machine with guarded transitions |
 | Classifier | Conservative one-class classifier; low confidence blocks |
@@ -39,8 +39,10 @@ Engineering completion and production acceptance are intentionally different.
 - Technical regression: **passing** — 10 synthetic documents, 100% expected
   field accuracy, zero validator disputes.
 - Owner-verified golden set: **awaiting owner evidence** — 0 of 10 documents.
-- OCR/layout selection: **awaiting representative documents** — scanned,
-  multi-column, and nested-table samples have not been supplied.
+- OCR/layout selection: **N2 engineering complete; owner approval pending** — the
+  selected PDF layout adapter and reproducible benchmark runner are implemented,
+  but the owner-approved scanned, multi-column, and nested-table evidence pack is
+  not stored in this repository.
 - Review time ≤15 minutes: **not measurable** until owner review sessions occur.
 - Pilot counterparties: **not selected**.
 
@@ -51,7 +53,7 @@ owner-verified and field accuracy remains at least 95%.
 
 The local adapters are intentionally transparent and testable. Production
 deployment must add controlled object storage, managed Delta merge jobs,
-identity/access policies, secrets management, monitoring, and the selected
-OCR/layout backend. Those adapters must preserve the domain and gate behavior
-demonstrated here.
+identity/access policies, secrets management, monitoring, and owner-approved
+OCR coverage for image-only inputs. Those adapters must preserve the domain and
+gate behavior demonstrated here.
 

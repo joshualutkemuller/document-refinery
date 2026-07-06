@@ -28,8 +28,9 @@ Run them with `run_layout_benchmark` from
 `document_refinery.infrastructure.layout_benchmark`, using the selected layout
 adapter and document-specific minimum text/table thresholds. The runner writes a
 publishable `layout_benchmark_results.json` containing adapter version, text
-characters, table-cell count, confidence, reading-order locator count, status,
-and all threshold issues.
+characters, table-cell count, confidence, reading-order locator count, locator
+reproducibility, latency, zero-dollar local adapter cost, layout artifact hash,
+status, and all threshold issues.
 
 ## Scoring rubric
 

@@ -18,7 +18,8 @@
 
 ## Owner acceptance inputs still required
 
-- [ ] Provide three difficult, sanitized schedules for extraction-tool benchmarking
+- [x] Implement N2 provider-neutral layout adapter and reproducible benchmark harness
+- [ ] Owner-approve the three difficult, sanitized schedules for extraction-tool benchmarking
 - [ ] Select two or three pilot counterparties
 - [ ] Confirm verbatim-clause data-handling policy
 - [x] Initial Gate A review UX (generated HTML and JSON)
@@ -28,9 +29,10 @@
 
 ## Evidence-driven productionization sequence
 
-1. Benchmark text/layout extraction on scanned, multi-column, and nested-table
+1. Publish the N2 benchmark report on scanned, multi-column, and nested-table
    examples; record accuracy, locator fidelity, latency, cost, and failure modes.
-2. Select and implement production object-storage and OCR/layout adapters.
+2. Select and implement production object-storage plus any owner-approved OCR
+   adapter needed for image-only documents.
 3. Implement managed Delta merge jobs from the tested promotion behavior.
 4. Connect the review packet to the owner's preferred authenticated UI.
 5. Promote or replace synthetic cases with ten owner-verified documents.

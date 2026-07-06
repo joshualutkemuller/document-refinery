@@ -183,11 +183,13 @@ docs/              ADRs, validation evidence, roadmap, and toolchain rubric
 2. **English and known wording only without semantic configuration.** Classification relies on exact
    English-language signatures. Multilingual documents, paraphrases, and major
    template revisions are not semantically recognized.
-3. **No OCR.** PDFs must contain an extractable text layer. Scans, handwriting,
-   poor encodings, and image-only tables are unsupported.
-4. **Limited layout understanding.** Layout artifacts preserve page and line
-   anchors, not bounding boxes, merged cells, reading-order graphs, or complete
-   table topology.
+3. **Image-only OCR remains gated.** The selected N2 PDF adapter persists
+   confidence-bearing coordinates for text-bearing PDFs; scans and image-only
+   tables fail closed until an OCR engine supplies passing layout artifacts.
+4. **Owner benchmark evidence remains external.** The N2 benchmark runner records
+   text, table, locator reproducibility, latency, cost, and artifact hashes, but
+   production release still requires the owner-approved three-document evidence
+   pack described in the handoff.
 5. **Profile-bound extraction.** The five public parsers are validated against
    exact document hashes. Upstream revisions can require parser and golden-case
    updates.
@@ -218,8 +220,8 @@ contracts, original-language lineage validation, separate-session enforcement,
 model-call audit hashes, and routing for unknown profiles when adapters are
 configured programmatically. The next tranche is:
 
-1. Add OCR/layout backends and retain page coordinates, table cells, and reading
-   order in bronze artifacts.
+1. Publish owner-approved N2 benchmark evidence for the selected layout adapter
+   on scanned, multi-column, and nested/merged-cell schedules.
 2. Add an approved production model adapter that emits the existing strict
    silver schema, including verbatim evidence and explicit
    `not_found`/ambiguity states.
@@ -236,9 +238,9 @@ configured programmatically. The next tranche is:
 ## Acceptance status
 
 Phase 0/1 engineering is complete and executable locally. Production acceptance
-remains evidence-dependent: OCR/layout tooling must be benchmarked on three real
-representative documents, and the synthetic corpus must be replaced or promoted
-with at least ten owner-verified schedules. The release gate reports
+remains evidence-dependent: the selected OCR/layout toolchain decision must be
+owner-approved from the three-document benchmark, and the synthetic corpus must
+be replaced or promoted with at least ten owner-verified schedules. The release gate reports
 `phase_one_release_ready=false` until that evidence exists.
 
 See [Phase 0/1 completion](docs/phase-0-1-completion.md) for the distinction
