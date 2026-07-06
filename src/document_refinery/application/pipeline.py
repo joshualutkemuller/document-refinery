@@ -21,6 +21,11 @@ from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
 from document_refinery.infrastructure.artifacts import ArtifactStore, BronzeDocument
+from document_refinery.infrastructure.layout import (
+    LayoutAdapter,
+    assert_layout_passed,
+    read_layout_artifact,
+)
 from document_refinery.infrastructure.model_calls import SemanticCallStore
 from document_refinery.infrastructure.records import GoldStore, SilverStore
 from document_refinery.infrastructure.tasks import TaskStatus, TaskStore
@@ -43,13 +48,12 @@ class RefineryPipeline:
         *,
         semantic_extractor: SemanticExtractor | None = None,
         semantic_validator: SemanticValidator | None = None,
+        layout_adapter: LayoutAdapter | None = None,
     ) -> None:
         if (semantic_extractor is None) != (semantic_validator is None):
-            raise ValueError(
-                "semantic extractor and validator must be configured together"
-            )
+            raise ValueError("semantic extractor and validator must be configured together")
         self.workspace = workspace
-        self.artifacts = ArtifactStore(workspace / "artifacts")
+        self.artifacts = ArtifactStore(workspace / "artifacts", layout_adapter=layout_adapter)
         self.tasks = TaskStore(workspace / "refinery_tasks.sqlite3")
         self.silver = SilverStore(workspace / "silver")
         self.gold = GoldStore(workspace / "gold" / "eligibility_terms.jsonl")
@@ -79,18 +83,15 @@ class RefineryPipeline:
             text_artifact.text,
             hint=document.doc_class_hint,
         )
-        semantic_route = (
-            classification.doc_class == "unknown" or classification.review_required
-        )
-        if semantic_route and (
-            self.semantic_extractor is None or self.semantic_validator is None
-        ):
+        semantic_route = classification.doc_class == "unknown" or classification.review_required
+        if semantic_route and (self.semantic_extractor is None or self.semantic_validator is None):
             raise ValueError(
                 f"classification requires owner review (confidence={classification.confidence:.2f})"
             )
         self.tasks.transition(document.doc_id, TaskStatus.CLASSIFIED)
 
         if semantic_route:
+            assert_layout_passed(read_layout_artifact(Path(text_artifact.layout_uri)))
             assert self.semantic_extractor is not None
             assert self.semantic_validator is not None
             semantic_extraction = self.semantic_extractor.extract(
