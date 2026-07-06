@@ -44,6 +44,7 @@ class QualityReporter:
                 status.value: sum(row.validator_status is status for row in rows)
                 for status in ValidatorStatus
             },
+            "per_document": _per_document(rows),
         }
         audit: tuple[dict[str, object], ...] = tuple(
             {
@@ -58,3 +59,24 @@ class QualityReporter:
             for row in rows
         )
         return QualityReport(briefing, dashboard, audit)
+
+
+def _per_document(rows: tuple[SilverExtraction, ...]) -> list[dict[str, object]]:
+    by_doc: dict[str, list[SilverExtraction]] = {}
+    for row in rows:
+        by_doc.setdefault(row.doc_id, []).append(row)
+    summaries: list[dict[str, object]] = []
+    for doc_id, doc_rows in sorted(by_doc.items()):
+        found = [r for r in doc_rows if r.value_type is not ValueType.NOT_FOUND]
+        summaries.append(
+            {
+                "doc_id": doc_id,
+                "field_count": len(doc_rows),
+                "completeness_pct": round(len(found) / len(doc_rows) * 100, 2),
+                "mean_confidence": round(fmean(r.confidence for r in doc_rows), 4),
+                "dispute_count": sum(
+                    r.validator_status is ValidatorStatus.DISPUTED for r in doc_rows
+                ),
+            }
+        )
+    return summaries

@@ -20,6 +20,7 @@ from document_refinery.application.corrections import (
 )
 from document_refinery.application.pipeline import (
     ClassificationReviewRequired,
+    GoldRepository,
     RefineryPipeline,
 )
 from document_refinery.application.promotion import PromotionError
@@ -33,6 +34,7 @@ from document_refinery.infrastructure.chat_completions import (
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
+from document_refinery.quality.dashboard import render_dashboard
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
 
@@ -54,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--approved-by")
     run.add_argument("--language", default="und")
     _add_semantic_options(run)
+    _add_storage_options(run)
 
     review = subcommands.add_parser(
         "review",
@@ -87,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("doc_id")
     approve.add_argument("--workspace", type=Path, required=True)
     approve.add_argument("--approved-by", required=True)
+    _add_storage_options(approve)
 
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
@@ -95,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--approved-by")
     watch.add_argument("--language", default="und")
     _add_semantic_options(watch)
+    _add_storage_options(watch)
     return parser
 
 
@@ -130,6 +135,33 @@ def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
         default=60.0,
     )
     parser.add_argument("--semantic-max-retries", type=int, default=2)
+
+
+def _add_storage_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--gold-store",
+        choices=("jsonl", "delta"),
+        default="jsonl",
+        help="gold storage backend: 'jsonl' (default, local) or 'delta' (Delta Lake)",
+    )
+    parser.add_argument(
+        "--gold-uri",
+        help=(
+            "Delta table URI for --gold-store delta: a local path or object store "
+            "(s3://, az://, gs://). Defaults to <workspace>/gold/eligibility_terms.delta"
+        ),
+    )
+
+
+def _build_gold_store(
+    gold_store: str, gold_uri: str | None, workspace: Path
+) -> GoldRepository | None:
+    if gold_store != "delta":
+        return None
+    from document_refinery.infrastructure.delta_store import DeltaGoldStore
+
+    uri = gold_uri or str(workspace / "gold" / "eligibility_terms.delta")
+    return DeltaGoldStore(uri)
 
 
 def main() -> int:
@@ -175,11 +207,16 @@ def main() -> int:
             semantic_constitution_version=args.semantic_constitution_version,
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
+            gold_store=args.gold_store,
+            gold_uri=args.gold_uri,
         )
     elif args.command == "review":
         return _run_review(args)
     elif args.command == "approve":
-        pipeline = RefineryPipeline(args.workspace)
+        pipeline = RefineryPipeline(
+            args.workspace,
+            gold_store=_build_gold_store(args.gold_store, args.gold_uri, args.workspace),
+        )
         try:
             try:
                 gold_rows = pipeline.approve(args.doc_id, approved_by=args.approved_by)
@@ -221,6 +258,8 @@ def main() -> int:
             semantic_constitution_version=args.semantic_constitution_version,
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
+            gold_store=args.gold_store,
+            gold_uri=args.gold_uri,
         )
     return 0
 
@@ -240,6 +279,8 @@ def _run_documents(
     semantic_constitution_version: str,
     semantic_timeout_seconds: float,
     semantic_max_retries: int,
+    gold_store: str = "jsonl",
+    gold_uri: str | None = None,
 ) -> None:
     semantic_extractor, semantic_validator = _build_semantic_components(
         provider=semantic_provider,
@@ -262,6 +303,7 @@ def _run_documents(
         workspace,
         semantic_extractor=semantic_extractor,
         semantic_validator=semantic_validator,
+        gold_store=_build_gold_store(gold_store, gold_uri, workspace),
     )
     all_rows: list[SilverExtraction] = []
     try:
@@ -315,7 +357,10 @@ def _run_documents(
                 + "\n",
                 encoding="utf-8",
             )
+            dashboard_path = workspace / "quality_dashboard.html"
+            dashboard_path.write_text(render_dashboard(report), encoding="utf-8")
             print(f"Quality report: {quality_path}")
+            print(f"Quality dashboard: {dashboard_path}")
     finally:
         pipeline.close()
 

@@ -191,11 +191,38 @@ download list and wire each one in with `scripts/add_corpus_document.py`.
 | `document-refinery run FILE --workspace DIR [--language TAG] [--semantic-provider openai]` | Process one document and stop at Gate A |
 | `document-refinery watch LANDING --workspace DIR [--language TAG] [--semantic-provider openai]` | Process every supported landing-zone document |
 | `document-refinery review DOC_ID --workspace DIR [--list] [--reviewer NAME] [--pending-only] [--corrections FILE]` | Confirm/correct/dispute silver rows in the terminal before Gate A |
-| `document-refinery approve DOC_ID --workspace DIR --approved-by NAME` | Record Gate A approval and promote eligible rows |
+| `document-refinery approve DOC_ID --workspace DIR --approved-by NAME [--gold-store delta] [--gold-uri URI]` | Record Gate A approval and promote eligible rows (JSONL or Delta Lake) |
 
 The workspace contains content-addressed raw/text/layout artifacts, SQLite task
 state, extracted and validated silver JSONL, review packets, local gold JSONL,
-and a three-altitude quality report.
+a three-altitude quality report, and a self-contained
+**`quality_dashboard.html`** — a theme-aware coverage/confidence/validation
+dashboard (KPI tiles, a validation-status bar, and a per-document coverage table)
+rendered from the same quality data, ready to open or serve from the Dash stack.
+
+### Production gold storage (Delta Lake)
+
+By default gold lands to local JSONL (zero dependencies). For a production,
+quant-queryable table, land gold to **Delta Lake** instead — real versioned
+Delta tables that Databricks / Spark / DuckDB / Polars read directly:
+
+```bash
+pip install "document-refinery[delta]"
+
+# Local Delta table
+document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua" \
+  --gold-store delta
+
+# Cloud object store (credentials/region via the usual environment variables)
+document-refinery run doc.pdf --workspace .refinery --approved-by "Joshua" \
+  --gold-store delta --gold-uri s3://my-bucket/refinery/gold_eligibility_terms
+```
+
+The Delta adapter preserves the same bitemporal semantics (`valid_from/valid_to`,
+`knowledge_from/knowledge_to`) and clause lineage as JSONL; each `approve` writes
+a new Delta version, so point-in-time/time-travel queries and an audit history
+come from the `_delta_log`. `deltalake`/`pyarrow` are an optional extra — the
+core stays dependency-light and JSONL remains the default.
 
 ## Storage and records
 
@@ -204,7 +231,8 @@ and a three-altitude quality report.
 - **Silver:** one row per canonical field, including raw and normalized values,
   clause text, locator, confidence, ambiguity, validation, and correction data.
 - **Gold:** deterministic eligibility records with valid time, knowledge time,
-  and every contributing silver extraction ID.
+  and every contributing silver extraction ID — landed to local JSONL or to a
+  versioned Delta Lake table (`--gold-store delta`).
 - **Quality:** executive prose, dashboard metrics, and a complete audit appendix.
 
 The local filesystem, SQLite, and JSONL implementations are reference adapters.
