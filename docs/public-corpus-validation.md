@@ -33,7 +33,7 @@ ruff check .
 mypy src
 ```
 
-The automated suite contains 30 tests, including manifest hash verification and
+The automated suite contains 34 tests, including manifest hash verification and
 an end-to-end Gate A assertion for each public PDF.
 
 ## Interpretation
@@ -46,4 +46,3 @@ text, so its `valid_from` remains `not_found` until resolved during Gate A.
 Profile detection is conservative. A document with an unknown layout or missing
 signature is sent to classification review rather than forced through one of
 these parsers.
-

@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--workspace", type=Path, required=True)
     run.add_argument("--source", default="local")
     run.add_argument("--approved-by")
+    run.add_argument("--language", default="und")
 
     approve = subcommands.add_parser(
         "approve",
@@ -43,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--workspace", type=Path, required=True)
     watch.add_argument("--source", default="local")
     watch.add_argument("--approved-by")
+    watch.add_argument("--language", default="und")
     return parser
 
 
@@ -80,6 +82,7 @@ def main() -> int:
             workspace=args.workspace,
             source=args.source,
             approved_by=args.approved_by,
+            language=args.language,
         )
     elif args.command == "approve":
         pipeline = RefineryPipeline(args.workspace)
@@ -103,6 +106,7 @@ def main() -> int:
             workspace=args.workspace,
             source=args.source,
             approved_by=args.approved_by,
+            language=args.language,
         )
     return 0
 
@@ -113,12 +117,18 @@ def _run_documents(
     workspace: Path,
     source: str,
     approved_by: str | None,
+    language: str,
 ) -> None:
     pipeline = RefineryPipeline(workspace)
     all_rows: list[SilverExtraction] = []
     try:
         for path in paths:
-            result = pipeline.run(path, source=source, approved_by=approved_by)
+            result = pipeline.run(
+                path,
+                source=source,
+                approved_by=approved_by,
+                language=language,
+            )
             all_rows.extend(result.silver_rows)
             print(
                 json.dumps(

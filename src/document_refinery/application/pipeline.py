@@ -15,11 +15,13 @@ from document_refinery.agents.public_schedules import (
     PublicCollateralScheduleExtractor,
     PublicScheduleValidator,
 )
+from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
 from document_refinery.application.classification import EligibilityScheduleClassifier
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
 from document_refinery.infrastructure.artifacts import ArtifactStore, BronzeDocument
+from document_refinery.infrastructure.model_calls import SemanticCallStore
 from document_refinery.infrastructure.records import GoldStore, SilverStore
 from document_refinery.infrastructure.tasks import TaskStatus, TaskStore
 
@@ -35,7 +37,17 @@ class PipelineResult:
 
 
 class RefineryPipeline:
-    def __init__(self, workspace: Path) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        semantic_extractor: SemanticExtractor | None = None,
+        semantic_validator: SemanticValidator | None = None,
+    ) -> None:
+        if (semantic_extractor is None) != (semantic_validator is None):
+            raise ValueError(
+                "semantic extractor and validator must be configured together"
+            )
         self.workspace = workspace
         self.artifacts = ArtifactStore(workspace / "artifacts")
         self.tasks = TaskStore(workspace / "refinery_tasks.sqlite3")
@@ -46,6 +58,9 @@ class RefineryPipeline:
         self.validator = EligibilityAdversarialValidator()
         self.public_extractor = PublicCollateralScheduleExtractor()
         self.public_validator = PublicScheduleValidator()
+        self.semantic_extractor = semantic_extractor
+        self.semantic_validator = semantic_validator
+        self.semantic_calls = SemanticCallStore(workspace / "model_calls")
         self.gate = GateAService()
         self.promotion = EligibilityPromotion()
 
@@ -55,6 +70,7 @@ class RefineryPipeline:
         *,
         source: str,
         approved_by: str | None = None,
+        language: str = "und",
     ) -> PipelineResult:
         document = self.artifacts.ingest(source_path, source=source)
         self.tasks.create(document.doc_id)
@@ -63,13 +79,40 @@ class RefineryPipeline:
             text_artifact.text,
             hint=document.doc_class_hint,
         )
-        if classification.doc_class == "unknown" or classification.review_required:
+        semantic_route = (
+            classification.doc_class == "unknown" or classification.review_required
+        )
+        if semantic_route and (
+            self.semantic_extractor is None or self.semantic_validator is None
+        ):
             raise ValueError(
                 f"classification requires owner review (confidence={classification.confidence:.2f})"
             )
         self.tasks.transition(document.doc_id, TaskStatus.CLASSIFIED)
 
-        if classification.profile == "normalized":
+        if semantic_route:
+            assert self.semantic_extractor is not None
+            assert self.semantic_validator is not None
+            semantic_extraction = self.semantic_extractor.extract(
+                doc_id=document.doc_id,
+                doc_class=EligibilityScheduleClassifier.DOC_CLASS,
+                text=text_artifact.text,
+                language=language,
+            )
+            semantic_validation = self.semantic_validator.validate(
+                doc_id=document.doc_id,
+                text=text_artifact.text,
+                extractions=semantic_extraction.rows,
+                extractor_session_id=self.semantic_extractor.model.session_id,
+                language=language,
+            )
+            extracted = semantic_extraction.rows
+            validated = semantic_validation.rows
+            self.semantic_calls.write(
+                document.doc_id,
+                (semantic_extraction.call, semantic_validation.call),
+            )
+        elif classification.profile == "normalized":
             extracted = self.extractor.extract(
                 doc_id=document.doc_id,
                 text=text_artifact.text,
