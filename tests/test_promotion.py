@@ -51,7 +51,7 @@ def test_ambiguous_row_blocks_promotion(extraction) -> None:
         ambiguity_flag=True,
         ambiguity_note="Header could apply to either entity.",
     )
-    with pytest.raises(PromotionError, match="confirmed, unambiguous"):
+    with pytest.raises(PromotionError, match="confirmed and unambiguous"):
         EligibilityPromotion().promote(silver, knowledge_from=datetime(2026, 7, 5))
 
 
@@ -64,4 +64,3 @@ def test_bitemporal_upsert_closes_prior_knowledge_version(extraction) -> None:
     history.upsert(second)
     assert history.records[0].knowledge_to == datetime(2026, 7, 5)
     assert history.records[1].knowledge_to is None
-

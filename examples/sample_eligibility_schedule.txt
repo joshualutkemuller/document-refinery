@@ -1,0 +1,10 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Example Bank
+Agreement ID: EXAMPLE-001
+Schedule Version: 2026-01
+Margin Type: VM
+Valid From: 2026-01-01
+Asset: GOVT_US | Eligible: yes | Haircut: 2% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD, EUR | Rating Floor: AA- | Tenor Cap Days: 3650
+Asset: CORP_IG_US | Eligible: yes | Haircut: 6% | Concentration Limit: 40% | Concentration Basis: posted collateral | Currencies: USD | Rating Floor: BBB- | Tenor Cap Days: 730
+
