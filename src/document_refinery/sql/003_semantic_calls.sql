@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS refinery.semantic_model_calls (
   request_hash STRING NOT NULL,
   response_hash STRING NOT NULL,
   created_at TIMESTAMP NOT NULL,
+  latency_ms BIGINT,
+  input_tokens BIGINT,
+  output_tokens BIGINT,
+  total_tokens BIGINT,
   CONSTRAINT valid_semantic_role CHECK (role IN ('extractor', 'validator'))
 ) USING DELTA;
 

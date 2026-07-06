@@ -65,6 +65,7 @@ class OpenAISemanticModel(SemanticModel):
         base_url: str = "https://api.openai.com/v1/responses",
         timeout_seconds: float = 60.0,
         max_retries: int = 2,
+        retry_base_delay_seconds: float = 1.0,
         policy: DataRetentionPolicy = APPROVED_OPENAI_POLICY,
     ) -> None:
         policy.require_approved()
@@ -75,7 +76,14 @@ class OpenAISemanticModel(SemanticModel):
         self._session_id = session_id or f"openai-{uuid4()}"
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
+        if max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if retry_base_delay_seconds < 0:
+            raise ValueError("retry_base_delay_seconds must be non-negative")
         self.max_retries = max_retries
+        self.retry_base_delay_seconds = retry_base_delay_seconds
 
     @property
     def session_id(self) -> str:
@@ -112,6 +120,7 @@ class OpenAISemanticModel(SemanticModel):
         data = json.dumps(payload).encode("utf-8")
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
+            started = time.monotonic()
             try:
                 http_request = urllib.request.Request(
                     self.base_url,
@@ -130,15 +139,17 @@ class OpenAISemanticModel(SemanticModel):
                     model=self._model,
                     response_id=str(body.get("id") or "unknown-response"),
                     created_at=datetime.now(UTC),
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    usage=_usage(body),
                 )
             except urllib.error.HTTPError as error:
                 last_error = error
                 if error.code not in {408, 409, 429, 500, 502, 503, 504}:
                     break
-            except TimeoutError as error:
+            except (TimeoutError, urllib.error.URLError) as error:
                 last_error = error
             if attempt < self.max_retries:
-                time.sleep(2**attempt)
+                time.sleep(self.retry_base_delay_seconds * (2**attempt))
         raise RuntimeError("OpenAI semantic call failed closed") from last_error
 
 
@@ -161,3 +172,15 @@ def _response_text(body: dict[str, object]) -> str:
     if chunks:
         return "".join(chunks)
     raise ValueError("OpenAI response did not contain output text")
+
+
+def _usage(body: dict[str, object]) -> dict[str, int]:
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+    output: dict[str, int] = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            output[key] = value
+    return output
