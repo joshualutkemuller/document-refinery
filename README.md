@@ -14,9 +14,9 @@ The repository provides a complete local Phase 0/1 reference implementation:
 - executive, dashboard, and audit quality outputs;
 - ten synthetic regression cases and five provenance-tracked public PDFs.
 
-This is currently a deterministic extraction system, not an LLM-backed semantic
-reader. Agent prompt contracts exist, but no production model provider is wired
-into the execution path.
+The deterministic path is production-independent. A provider-neutral semantic
+extractor/validator contract is now available programmatically for unknown
+templates, but no production model provider is selected or wired into the CLI.
 
 ## Non-negotiable invariants
 
@@ -119,8 +119,8 @@ automatically approved.
 |---|---|
 | `document-refinery ddl` | Print packaged Delta DDL in migration order |
 | `document-refinery regression --json` | Run the synthetic ten-document regression corpus |
-| `document-refinery run FILE --workspace DIR` | Process one document and stop at Gate A |
-| `document-refinery watch LANDING --workspace DIR` | Process every supported landing-zone document |
+| `document-refinery run FILE --workspace DIR [--language TAG]` | Process one document and stop at Gate A |
+| `document-refinery watch LANDING --workspace DIR [--language TAG]` | Process every supported landing-zone document |
 | `document-refinery approve DOC_ID --workspace DIR --approved-by NAME` | Record Gate A approval and promote eligible rows |
 
 The workspace contains content-addressed raw/text/layout artifacts, SQLite task
@@ -153,7 +153,7 @@ The public corpus currently produces:
 | Unresolved locators for found values | 0 |
 | Final workflow state | 5 at `gate_a_pending` |
 
-Thirty automated tests cover domain invariants, bitemporal behavior, workflow
+Thirty-four automated tests cover domain invariants, bitemporal behavior, workflow
 transitions, public-file hashes, every public PDF profile, and Gate A behavior.
 These are deterministic compatibility results, not owner-verified extraction
 accuracy. See [public corpus validation](docs/public-corpus-validation.md).
@@ -176,9 +176,9 @@ docs/              ADRs, validation evidence, roadmap, and toolchain rubric
 
 ## Current limitations
 
-1. **No production language model.** Extraction is deterministic and
-   profile-specific. The agent contracts are not connected to OpenAI or another
-   model runtime.
+1. **No production language-model provider.** Provider-neutral semantic
+   extractor and validator contracts exist, but the CLI is not connected to
+   OpenAI or another approved model runtime.
 2. **English and known wording only.** Classification relies on exact
    English-language signatures. Multilingual documents, paraphrases, and major
    template revisions are not semantically recognized.
@@ -212,12 +212,16 @@ docs/              ADRs, validation evidence, roadmap, and toolchain rubric
 
 ## Extending beyond simple schedules
 
-The next recommended tranche is a hybrid semantic extraction architecture:
+The hybrid semantic extraction foundation now provides strict JSON response
+contracts, original-language lineage validation, separate-session enforcement,
+model-call audit hashes, and routing for unknown profiles when adapters are
+configured programmatically. The next tranche is:
 
 1. Add OCR/layout backends and retain page coordinates, table cells, and reading
    order in bronze artifacts.
-2. Introduce a model adapter that emits the existing strict silver schema,
-   including verbatim evidence and explicit `not_found`/ambiguity states.
+2. Add an approved production model adapter that emits the existing strict
+   silver schema, including verbatim evidence and explicit
+   `not_found`/ambiguity states.
 3. Keep profile rules as high-precision anchors and use the model for varied
    language, unseen templates, and clause interpretation.
 4. Run an independently prompted validator that re-derives sampled fields from

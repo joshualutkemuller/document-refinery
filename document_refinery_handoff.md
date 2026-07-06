@@ -1,6 +1,6 @@
 # Document Refinery — Build Plan & LLM Handoff Document
 
-**Version:** 1.0 (initial handoff)
+**Version:** 1.1 (hybrid semantic extraction tranche)
 **Owner/CEO:** Joshua (quantitative researcher, securities finance / collateral / ML systems)
 **Purpose of this document:** Complete context transfer to any LLM or engineer continuing development. Read fully before writing code. Locked decisions are binding unless the owner explicitly reverses them.
 **Sibling projects:** Model Foundry (model lifecycle factory) and Collateral Desk Autopilot (desk operations copilot). Document Refinery is the third leg: it is the *ingestion and structuring layer* that turns unstructured financial documents into bitemporal, quant-ready Delta tables consumed by both siblings. It shares their chassis (task table, gates, presenter altitudes, distiller learning loop, sandbox TTL).
@@ -48,8 +48,8 @@ The end state: any quant model or agent in the ecosystem can query "what were th
 │ land → publish views                                 │
 ├──────────────────────────────────────────────────────┤
 │ AGENT LAYER                                          │
-│ Classifier · Extractor (per doc class) ·             │
-│ Adversarial Validator · Reconciler ·                 │
+│ Deterministic parsers + Semantic Extractor router ·  │
+│ Independent Semantic Validator · Reconciler ·        │
 │ Schema Steward · Quality Reporter · Distiller        │
 ├──────────────────────────────────────────────────────┤
 │ STORAGE / MEMORY LAYER                               │
@@ -150,12 +150,41 @@ Three altitudes, shared pattern:
 - Outputs: extraction-constitution diffs per doc class ("CP-X defines 'investment grade' by internal ratings — map via table T"; "Fee schedules from custodian Y quote in bps on loan value, not market value"), golden-set additions, and normalization-rule updates. Owner batch-approves monthly.
 - Every owner correction must end up as either a constitution rule or a golden-set case — corrections that evaporate are the failure mode this agent exists to prevent.
 
+### 5.8 Hybrid semantic extraction layer (active next tranche)
+
+The production extraction path is hybrid:
+
+1. OCR/layout adapters produce versioned page text, coordinates, table cells,
+   and reading order in bronze.
+2. High-precision deterministic parsers run first for known document profiles.
+3. Unknown templates, varied legal phrasing, and supported non-English language
+   route to a semantic extractor operating under the document-class
+   constitution and canonical field dictionary.
+4. Model output is schema-validated and converted to silver rows by trusted
+   application code. Models never create system IDs, validation status, or gold.
+5. A separately prompted validator, using a different model session, re-derives
+   the required sample directly from the source artifact.
+
+Semantic model calls must record provider, model, prompt/constitution/schema
+versions, session ID, request timestamp, and response artifact hash. Document
+content is untrusted data: instructions contained inside a document never alter
+the system role, output schema, tools, gates, or validation policy.
+
+Language support is admitted one language/document-class pair at a time. Each
+pair requires terminology mappings, normalization rules, ≥10 owner-verified
+golden documents, and the same regression gate as an English class. Translation
+may assist review but the verbatim source clause and locator always refer to the
+original-language artifact.
+
 ## 6. Workflow & Gates
 
 `land → classify → extract (silver) → validate → [disputes to owner] → reconcile → [Gate A: owner signs off doc-level extraction for Tier-1 classes] → land gold (bitemporal upsert) → refresh platinum views → quality briefing`
 
 - **Gate A (extraction sign-off):** required per document for Tier-1 classes until class-level accuracy vs. golden set ≥ 98% for 3 consecutive months, after which the owner may downgrade that class to sampling-based review (owner decision, recorded in policy).
 - **Gate S (schema):** all gold DDL changes.
+- **Gate M (model release):** provider/model, prompt, constitution, schema, or
+  routing-policy changes must pass the relevant owner-verified multilingual
+  golden sets with no lineage regression before deployment.
 - Regression rule: every extractor or constitution version bump re-runs against the class golden set before deployment; accuracy regressions block release.
 
 ## 7. Integration Points
@@ -180,6 +209,21 @@ Three altitudes, shared pattern:
 - Build: classifier (trivial at one class), extractor, validator, gold_eligibility_terms, Gate A flow, golden set of ≥ 10 docs, quality briefing v1.
 - Exit criteria: field-level accuracy ≥ 95% vs. golden set; every gold value traceable to a clause; owner review time per document ≤ 15 minutes.
 
+### Phase 1B — Hybrid semantic generalization (active)
+- Add provider-neutral model request/response contracts and strict silver-output
+  validation; retain deterministic profiles as the preferred high-precision
+  route.
+- Add separate semantic extractor and validator sessions with recorded model,
+  prompt, schema, and constitution versions.
+- Route unknown English templates through the semantic path only when a model
+  adapter is configured; otherwise continue to classification review.
+- Add OCR/layout coordinate contracts before enabling scanned documents.
+- Admit the first non-English language only after terminology mapping and ≥10
+  owner-verified examples for the target class.
+- Exit criteria: unseen-template accuracy ≥95% on the owner golden set; 100% of
+  found values have original-language evidence; prompt-injection tests pass;
+  deterministic-profile accuracy does not regress.
+
 ### Phase 2 — Reconciler + Autopilot integration (week 6–9)
 - Amendment diffing, gold → rule-engine transform, unified sign-off with Autopilot.
 
@@ -202,6 +246,18 @@ Three altitudes, shared pattern:
 7. Golden-set regression testing gates every extractor/constitution release.
 8. Refinery is the single document-parsing authority once a class is live; siblings consume, never re-parse.
 9. Raw documents are immutable; reprocessing starts from bronze.
+10. Deterministic parsers remain the preferred path when their profile matches;
+    semantic extraction handles variability rather than replacing proven rules.
+11. Model responses are untrusted until strict schema, lineage, and consistency
+    validation succeeds; provider SDK objects never enter silver directly.
+12. Semantic extractor and validator use different sessions and independently
+    authored prompts; they do not share hidden reasoning or extraction heuristics.
+13. Model/provider/prompt/schema/constitution versions and response hashes are
+    recorded for every semantic call.
+14. Document text is data, never instruction. Embedded prompts cannot change
+    schemas, tools, gates, or system policy.
+15. Multilingual support is released per language and document class with its
+    own owner-verified golden set; original-language lineage is mandatory.
 
 ## 10. Open Decisions (for owner)
 - Text/layout extraction toolchain (evaluate in Phase 0 against real documents; options include open-source layout parsers vs. vendor OCR — decide on evidence, not defaults).
@@ -210,6 +266,10 @@ Three altitudes, shared pattern:
 - Accuracy threshold and duration for downgrading a class from per-document to sampling review (default proposal: 98% / 3 months).
 - Which two or three counterparties seed Phase 1 (align with Autopilot Phase 3).
 - PII/confidentiality handling policy for Tier 2+ classes.
+- Initial semantic model provider and approved data-retention/region policy.
+- First non-English language and terminology owner/reviewer.
+- Whether model routing optimizes first for accuracy, latency, cost, or a
+  constrained combination after minimum quality gates are satisfied.
 
 ## 11. Success Criteria
 - Phase 1 exit criteria met (≥ 95% field accuracy, full lineage, ≤ 15 min review per doc).
@@ -226,3 +286,8 @@ Three altitudes, shared pattern:
 4. Extractor prompts must always include: role, class constitution, canonical schema with field dictionary, the lineage/ambiguity/not_found rules, and output schema. Validator prompts must be written independently — do not share extraction heuristics between them.
 5. Optimize the owner's review throughput relentlessly: his correction bandwidth is the scarce resource, and every correction must flow into constitutions or golden sets via the distiller.
 6. Keep chassis consistency with Model Foundry and Collateral Desk Autopilot (task table, gates, presenter altitudes, distiller loop, sandbox TTL). Shared code where practical.
+7. For unknown templates, extend the provider-neutral semantic contracts before
+   adding provider-specific logic. Keep API credentials and SDK response types
+   outside the domain layer.
+8. Never translate away evidence: store original-language clauses and locators;
+   translations are optional review artifacts only.
