@@ -461,7 +461,14 @@ corpora, and Gate M approval.
 2. Curate ≥10 owner-verified English eligibility schedules and ≥10 for the first
    non-English language/class pair.
 3. Measure field accuracy, locator accuracy, ambiguity/dispute rate, review
-   time, latency, and cost by profile/language/model version.
+   time, latency, and cost by profile/language/model version. **Harness
+   delivered:** `document-refinery accuracy` scores the extractor against a
+   golden corpus with independently authored ground truth (field/found-value
+   accuracy, locator coverage, per-field/per-document breakdown, mismatch list,
+   release gate). A 10-document realistic-synthetic corpus ships in
+   `examples/golden_corpus/` (98.9% field accuracy, gate correctly NOT READY
+   until documents are owner-verified). Point `--corpus` at owner-verified real
+   documents to produce release evidence.
 4. Feed every correction into a golden case or constitution rule.
 5. Enforce Gate M against deterministic and semantic regression corpora.
 

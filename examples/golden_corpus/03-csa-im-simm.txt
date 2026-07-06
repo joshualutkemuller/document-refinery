@@ -1,0 +1,10 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Halcyon Asset Management LLP
+Agreement ID: IM-CSD-2021-0098
+Schedule Version: 2026-01
+Margin Type: IM
+Valid From: 2026-01-15
+Asset: US Treasury Securities | Eligible: yes | Haircut: 1% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD | Tenor Cap Days: 10950
+Asset: German Federal Bonds (Bunds) | Eligible: yes | Haircut: 1% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: EUR | Tenor Cap Days: 10950
+Asset: Gold Bullion (LBMA) | Eligible: yes | Haircut: 12% | Concentration Limit: 10% | Concentration Basis: market value | Currencies: USD

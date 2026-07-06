@@ -18,6 +18,7 @@ from document_refinery.agents.public_schedules import (
 )
 from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
 from document_refinery.application.classification import EligibilityScheduleClassifier
+from document_refinery.application.correction_memory import LearnedCorrection
 from document_refinery.application.corrections import (
     CorrectionOutcome,
     CorrectionRequest,
@@ -33,6 +34,7 @@ from document_refinery.infrastructure.layout import (
     assert_layout_passed,
     read_layout_artifact,
 )
+from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.model_calls import SemanticCallStore
 from document_refinery.infrastructure.records import GoldStore, SilverStore
 from document_refinery.infrastructure.tasks import TaskStatus, TaskStore
@@ -97,6 +99,10 @@ class RefineryPipeline:
         self.gate = GateAService()
         self.corrections = CorrectionService()
         self.correction_log = CorrectionLog(workspace / "corrections")
+        self.memory_store = CorrectionMemoryStore(
+            workspace / "memory" / "corrections_memory.jsonl"
+        )
+        self.memory = self.memory_store.load()
         self.promotion = EligibilityPromotion()
 
     def run(
@@ -230,11 +236,20 @@ class RefineryPipeline:
         )
         self.silver.write(outcome.rows, stage="reviewed")
         self.correction_log.append(doc_id, outcome.records)
+        # Learn from the corrections so the same mistake is caught next time.
+        self.memory.learn(outcome.rows, outcome.records)
+        self.memory_store.save(self.memory)
         self.gate.create_review_packet(
             output_directory=self.workspace / "reviews",
             extractions=outcome.rows,
         )
         return outcome
+
+    def memory_suggestions(
+        self, rows: tuple[SilverExtraction, ...]
+    ) -> dict[str, LearnedCorrection]:
+        """Learned corrections that apply to these rows (extraction_id -> lesson)."""
+        return self.memory.suggestions_for(rows)
 
     def approve(self, doc_id: str, *, approved_by: str) -> tuple[GoldEligibilityTerm, ...]:
         task = self.tasks.get(doc_id)

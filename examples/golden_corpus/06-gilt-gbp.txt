@@ -1,0 +1,10 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Thames Capital Partners LLP
+Agreement ID: CSA-2020-UK-0777
+Schedule Version: 2026-02
+Margin Type: VM
+Valid From: 2026-02-15
+Asset: UK Gilts | Eligible: yes | Haircut: 1% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: GBP | Tenor Cap Days: 10950
+Asset: Index-Linked Gilts | Eligible: yes | Haircut: 2.5% | Concentration Limit: 50% | Concentration Basis: market value | Currencies: GBP | Tenor Cap Days: 10950
+Asset: GBP Investment-Grade Corporates | Eligible: yes | Haircut: 6% | Concentration Limit: 15% | Concentration Basis: market value | Currencies: GBP | Rating Floor: A- | Tenor Cap Days: 3650

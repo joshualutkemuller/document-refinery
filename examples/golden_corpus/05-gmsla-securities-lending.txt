@@ -1,0 +1,10 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Northwind Securities Inc
+Agreement ID: GMSLA-2019-0521
+Schedule Version: 2026-01
+Margin Type: Secured Financing
+Valid From: 2026-01-01
+Asset: Main-Index Equities (DM) | Eligible: yes | Haircut: 8% | Concentration Limit: 15% | Concentration Basis: market value | Currencies: USD, EUR, GBP
+Asset: Exchange-Traded Funds | Eligible: yes | Haircut: 10% | Concentration Limit: 10% | Concentration Basis: market value | Currencies: USD
+Asset: Convertible Bonds | Eligible: no | Haircut: 0% | Concentration Limit: 0% | Concentration Basis: market value | Currencies: USD

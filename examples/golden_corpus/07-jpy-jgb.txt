@@ -1,0 +1,8 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Sakura Trust Bank, Ltd.
+Agreement ID: CSA-2017-JP-0203
+Schedule Version: 2026-01
+Margin Type: Variation Margin
+Valid From: 2026-01-01
+Asset: Japanese Government Bonds (JGB) | Eligible: yes | Haircut: 1.5% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: JPY | Tenor Cap Days: 10950

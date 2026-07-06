@@ -1,0 +1,10 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Pacific Rim Clearing Ltd
+Agreement ID: GMRA-TP-2020-3310
+Schedule Version: 2026-03
+Margin Type: Repo
+Valid From: 2026-03-01
+Asset: G7 Government Bonds | Eligible: yes | Haircut: 2% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD, EUR, GBP, JPY | Rating Floor: AA- | Tenor Cap Days: 10950
+Asset: Supranational & Agency | Eligible: yes | Haircut: 3% | Concentration Limit: 40% | Concentration Basis: market value | Currencies: USD, EUR | Rating Floor: AA- | Tenor Cap Days: 5475
+Asset: Covered Bonds | Eligible: yes | Haircut: 4.5% | Concentration Limit: 20% | Concentration Basis: market value | Currencies: EUR | Rating Floor: AAA | Tenor Cap Days: 3650
