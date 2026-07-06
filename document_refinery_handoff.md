@@ -1,11 +1,79 @@
 # Document Refinery — Build Plan & LLM Handoff Document
 
-**Version:** 1.1 (hybrid semantic extraction tranche)
+**Version:** 1.2 (current-state checkpoint and execution plan)
+**Checkpoint date:** 2026-07-05
 **Owner/CEO:** Joshua (quantitative researcher, securities finance / collateral / ML systems)
 **Purpose of this document:** Complete context transfer to any LLM or engineer continuing development. Read fully before writing code. Locked decisions are binding unless the owner explicitly reverses them.
 **Sibling projects:** Model Foundry (model lifecycle factory) and Collateral Desk Autopilot (desk operations copilot). Document Refinery is the third leg: it is the *ingestion and structuring layer* that turns unstructured financial documents into bitemporal, quant-ready Delta tables consumed by both siblings. It shares their chassis (task table, gates, presenter altitudes, distiller learning loop, sandbox TTL).
 
 ---
+
+## 0. Current Repository Checkpoint
+
+The repository is no longer an initial scaffold. Phase 0/1 engineering and the
+hybrid semantic foundation are implemented on `main`.
+
+### 0.1 Completed capabilities
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Professional packaged-Python repository and CI | Complete | `pyproject.toml`, GitHub Actions, Ruff, strict mypy, pytest |
+| Immutable bronze ingestion | Complete locally | SHA-256 content-addressed raw documents with collision checks |
+| Versioned text/layout artifacts | Complete for text-bearing files | TXT, Markdown, and PDF text plus page/line layout JSON |
+| Durable task workflow | Complete locally | SQLite state machine with guarded transitions through Gate A and gold |
+| Deterministic eligibility extraction | Complete for supported profiles | Normalized, portfolio-guideline, CME, FICC GSD, DTC, and ISDA VM profiles |
+| Independent validation | Complete for supported profiles | Separate deterministic parser/evidence validators; disputes block Gate A |
+| Gate A review | Complete locally | HTML/JSON packets, identified CLI approval, no automatic approval |
+| Deterministic gold promotion | Complete locally | Bitemporal eligibility records with all contributing silver IDs |
+| Quality reporting | Complete locally | Executive briefing, dashboard JSON, and audit appendix |
+| Synthetic regression corpus | Complete technically | 10 documents, 100% expected-field accuracy, zero disputes |
+| Public PDF corpus | Complete technically | 5 hashed PDFs, 154 eligibility records, 2,156 silver fields |
+| Provider-neutral semantic extraction | Foundation complete | Strict JSON schemas, original-language evidence, system-field rejection |
+| Independent semantic validation | Foundation complete | Separate-session enforcement and full judgment coverage |
+| Semantic audit trail | Foundation complete | Provider/model/session/version metadata plus request/response hashes |
+| Operational SQL contracts | Complete for implemented layers | Bronze, silver, gold, tasks, gates, regression, and semantic-call DDL |
+
+### 0.2 Verified repository evidence
+
+- Automated suite: **34 passing tests**.
+- Static checks: **Ruff passing; strict mypy passing**.
+- Public corpus: **5/5 documents reach `gate_a_pending`**.
+- Public corpus output: **154 eligibility records / 2,156 silver fields**.
+- Public corpus validation: **zero disputes and zero unresolved locators for
+  found values**.
+- Unknown-language foundation: a Spanish unseen-template test routes through
+  different extractor/validator sessions and stops at Gate A.
+- Prompt-injection control: model attempts to set system-controlled fields are
+  rejected before silver persistence.
+
+These are engineering compatibility results, not production accuracy evidence.
+No public document or synthetic case is counted as an owner-verified golden
+extraction.
+
+### 0.3 Supported execution paths
+
+1. Known profiles use deterministic parsing and deterministic/evidence
+   validation.
+2. Unknown profiles stop for classification review by default.
+3. Unknown profiles may use the semantic route only when both an approved
+   semantic extractor and an independent semantic validator adapter are
+   configured programmatically.
+4. Every successful path stops at Gate A unless an identified reviewer approves
+   it.
+
+### 0.4 Not complete
+
+- No production semantic-model provider or credential/configuration adapter.
+- No OCR for scanned or image-only documents.
+- No bounding-box, merged-cell, or reading-order graph artifacts.
+- No owner-verified ten-document golden set or measured review-time evidence.
+- No authenticated correction/dispute UI or automated distiller feedback.
+- No production object storage, managed Delta jobs, access controls, monitoring,
+  or retry orchestration.
+- No full CSA economics gold schema (threshold, MTA, IA, rounding, interest,
+  dispute timing, custody).
+- No amendment/base reconciliation, term diff, or Autopilot transform.
+- No released multilingual language/document-class pair.
 
 ## 1. Mission Statement
 
@@ -97,7 +165,7 @@ Follow the owner's existing bitemporal pattern (as in the FRED pipeline): every 
 ```sql
 CREATE TABLE refinery.gold_eligibility_terms (
   counterparty STRING, agreement_id STRING, schedule_version STRING,
-  margin_type STRING,               -- VM | IM | Repo
+  margin_type STRING,               -- VM | IM | Repo | Clearing Fund | Secured Financing
   asset_criterion STRING,           -- Bloomberg-taxonomy-aligned key
   eligible BOOLEAN, haircut_pct DOUBLE,
   concentration_limit_pct DOUBLE, concentration_basis STRING,
@@ -200,16 +268,27 @@ original-language artifact.
 
 ## 8. Build Plan
 
-### Phase 0 — Foundations (week 1–2)
+### Phase 0 — Foundations — engineering complete; production acceptance pending
 - Bronze/silver DDL; landing zone + watcher job; text/layout extraction toolchain selection (test against 3 gnarly real schedules — scanned, multi-column, nested tables — before committing).
 - Golden-set tooling: a lightweight review UI or notebook flow for the owner to confirm/correct silver rows efficiently (this is the highest-leverage UX in the project; owner review throughput determines everything).
 
-### Phase 1 — One class, end to end (week 2–6) ← **start here**
+Delivered: local bronze/silver/gold adapters, watcher, task workflow, review
+packets, quality outputs, and text-bearing PDF support. Still required for
+production acceptance: the three-document OCR/layout benchmark and authenticated
+owner correction workflow.
+
+### Phase 1 — One class, end to end — engineering complete; owner acceptance pending
 - Single Tier-1 class: **collateral eligibility schedules**, 2–3 counterparties the owner knows cold (shared choice with Autopilot Phase 3 — same pilot, one effort).
 - Build: classifier (trivial at one class), extractor, validator, gold_eligibility_terms, Gate A flow, golden set of ≥ 10 docs, quality briefing v1.
 - Exit criteria: field-level accuracy ≥ 95% vs. golden set; every gold value traceable to a clause; owner review time per document ≤ 15 minutes.
 
-### Phase 1B — Hybrid semantic generalization (active)
+Delivered: complete local vertical slice, six deterministic profiles, synthetic
+and public corpora, clause lineage, Gate A, bitemporal promotion, and quality
+reporting. Still required for owner acceptance: ≥10 owner-verified schedules,
+two or three pilot counterparties, ≥95% measured accuracy, and ≤15-minute
+measured review time.
+
+### Phase 1B — Hybrid semantic generalization — foundation complete; active next phase
 - Add provider-neutral model request/response contracts and strict silver-output
   validation; retain deterministic profiles as the preferred high-precision
   route.
@@ -224,16 +303,23 @@ original-language artifact.
   found values have original-language evidence; prompt-injection tests pass;
   deterministic-profile accuracy does not regress.
 
-### Phase 2 — Reconciler + Autopilot integration (week 6–9)
+Delivered: provider-neutral contracts, complete response schemas, trusted
+silver conversion, separate-session validation, semantic routing hooks,
+original-language evidence enforcement, prompt-injection/system-field
+rejection, semantic audit hashes, JSONL audit storage, and Delta DDL. Still
+required: provider selection, production adapter, OCR/layout coordinates,
+owner-verified unseen-template corpus, and first approved language/class pair.
+
+### Phase 2 — Reconciler + Autopilot integration — not started
 - Amendment diffing, gold → rule-engine transform, unified sign-off with Autopilot.
 
-### Phase 3 — Platinum features + Foundry integration (week 8–11)
+### Phase 3 — Platinum features + Foundry integration — not started
 - First feature views (`plat_eligibility_breadth`, `plat_terms_change_events`); register as Foundry data contracts; one Foundry experiment consumes them as proof.
 
-### Phase 4 — Class expansion (week 11–16)
+### Phase 4 — Class expansion — not started
 - Add CSA terms and lending fee schedules (Tier 1 completion), then GMRA/MRA. Each class follows the locked entry rule (schema + golden set + named consumer).
 
-### Phase 5 — Learning-loop hardening + review downgrade (week 16–20)
+### Phase 5 — Learning-loop hardening + review downgrade — not started
 - Distiller cadence, constitution/golden-set growth, accuracy tracking per class, first sampling-based review downgrade if a class earns it.
 
 ## 9. Locked Decisions
@@ -260,8 +346,10 @@ original-language artifact.
     own owner-verified golden set; original-language lineage is mandatory.
 
 ## 10. Open Decisions (for owner)
-- Text/layout extraction toolchain (evaluate in Phase 0 against real documents; options include open-source layout parsers vs. vendor OCR — decide on evidence, not defaults).
-- Review UX for golden-set curation and Gate A (notebook, lightweight web form, or dashboard-embedded).
+- Production OCR/layout toolchain (the text-bearing PDF baseline is implemented;
+  evaluate scanned, multi-column, and nested-table documents before selection).
+- Authenticated review UX for corrections and disputes (generated HTML/JSON plus
+  CLI approval is implemented as the local baseline).
 - Whether verbatim clause text in silver raises any internal data-handling constraints (compliance check; if so, store locators + hashes and fetch clauses on demand from bronze).
 - Accuracy threshold and duration for downgrading a class from per-document to sampling review (default proposal: 98% / 3 months).
 - Which two or three counterparties seed Phase 1 (align with Autopilot Phase 3).
@@ -271,17 +359,100 @@ original-language artifact.
 - Whether model routing optimizes first for accuracy, latency, cost, or a
   constrained combination after minimum quality gates are satisfied.
 
-## 11. Success Criteria
-- Phase 1 exit criteria met (≥ 95% field accuracy, full lineage, ≤ 15 min review per doc).
+## 11. Success Criteria and Current Status
+- Phase 1 exit criteria: **pending owner evidence** (≥95% field accuracy and
+  ≤15-minute review time are not yet measured; technical lineage is complete).
 - Zero silently-wrong gold values discovered downstream (every error traceable to a flagged ambiguity or open dispute, not a silent guess).
-- Autopilot consumes Refinery gold for at least one counterparty's live schedule by end of Phase 2.
-- One Foundry model/experiment consumes platinum features by end of Phase 3.
-- Documented month-over-month accuracy improvement per class attributable to constitution/golden-set growth.
-- Owner can answer "what terms applied for counterparty X as known on date D" with one query.
+- Autopilot live consumption: **not started**.
+- Foundry platinum consumption: **not started**.
+- Month-over-month learned improvement: **not started**.
+- Bitemporal point-in-time query: **implemented at the domain/reference-adapter
+  level; not deployed to production Delta**.
 
-## 12. Handoff Instructions for the Next LLM
+## 12. Prioritized Next Steps
+
+### Milestone N1 — owner decisions and evaluation inputs
+
+1. Select the initial semantic-model provider and approve data retention,
+   geographic processing, logging, and credential policy.
+2. Select two or three pilot counterparties and provide ≥10 sanitized,
+   owner-reviewable eligibility schedules.
+3. Provide three layout/OCR benchmark documents: scanned, multi-column, and
+   nested/merged-cell.
+4. Select the first non-English language/document-class pair and identify its
+   terminology reviewer.
+5. Confirm whether verbatim silver clauses may be stored or must be represented
+   by locators/hashes with controlled retrieval.
+
+**N1 exit:** the engineering team has approved data, provider, policy, language,
+and reviewers; no production model call occurs before this gate.
+
+### Milestone N2 — production document understanding
+
+1. Implement the selected OCR/layout adapter behind a provider-neutral
+   interface.
+2. Persist page coordinates, table cells, merged-cell relationships, confidence,
+   and reading order as versioned bronze artifacts.
+3. Run and publish the three-document benchmark using text fidelity, table
+   fidelity, locator reproducibility, latency, cost, and data-handling criteria.
+4. Keep image-only or structurally failed documents out of semantic extraction
+   until the artifact passes quality thresholds.
+
+**N2 exit:** 100% reproducible locators on the benchmark and an owner-approved
+toolchain decision.
+
+### Milestone N3 — production semantic provider adapter
+
+1. Implement the approved provider adapter for the existing `SemanticModel`
+   protocol; keep SDK types and credentials outside domain code.
+2. Add configuration/CLI wiring for separate extractor and validator model
+   sessions.
+3. Store response artifacts securely and retain the existing request/response
+   hashes and version metadata.
+4. Add bounded retries, timeouts, rate-limit handling, cost/latency metrics, and
+   fail-closed behavior.
+5. Run prompt-injection, malformed JSON, missing evidence, unsupported field,
+   same-session, and provider-identity tests against the real adapter.
+
+**N3 exit:** unknown English templates reach Gate A through two independent
+model sessions without any model-controlled system fields.
+
+### Milestone N4 — owner-verified release evidence
+
+1. Build the authenticated correction/dispute UI on the current review packet.
+2. Curate ≥10 owner-verified English eligibility schedules and ≥10 for the first
+   non-English language/class pair.
+3. Measure field accuracy, locator accuracy, ambiguity/dispute rate, review
+   time, latency, and cost by profile/language/model version.
+4. Feed every correction into a golden case or constitution rule.
+5. Enforce Gate M against deterministic and semantic regression corpora.
+
+**N4 exit:** ≥95% field accuracy, 100% found-value lineage, ≤15-minute owner
+review time, no deterministic regression, and explicit owner release approval.
+
+### Milestone N5 — production storage and full CSA economics
+
+1. Implement object-storage and managed Delta adapters for bronze, silver, gold,
+   workflow tasks, Gate A decisions, and semantic call audits.
+2. Add canonical `gold_csa_terms` fields for threshold, MTA, IA, rounding,
+   eligible currencies, interest, dispute timing, custody, and reuse rights.
+3. Add schema migrations through Gate S and owner-verified CSA golden cases.
+4. Add operational access control, encryption, secrets management, monitoring,
+   retries, and recovery procedures.
+
+**N5 exit:** one approved pilot counterparty is queryable in production Delta
+with complete CSA economics and point-in-time lineage.
+
+### Then proceed to Phase 2
+
+Only after N1-N5 should the project prioritize amendment reconciliation,
+gold-to-Autopilot transformation, unified sign-off, platinum features, or broad
+document-class expansion.
+
+## 13. Handoff Instructions for the Next LLM
 1. Read this document fully; locked decisions are binding. Lineage (Locked Decision 1) and silver-only extractors (2) are the structural core — do not weaken them for convenience.
-2. Ask the owner which phase is active before writing code.
+2. The active phase is Phase 1B, beginning with Milestone N1. Ask only for
+   unresolved N1 owner inputs; do not restart completed Phase 0/1 work.
 3. Reuse the owner's bitemporal idioms from his FRED pipeline; match his engineering patterns (packaged Python repos, pytest suites, Delta/Databricks conventions, Bloomberg taxonomy alignment).
 4. Extractor prompts must always include: role, class constitution, canonical schema with field dictionary, the lineage/ambiguity/not_found rules, and output schema. Validator prompts must be written independently — do not share extraction heuristics between them.
 5. Optimize the owner's review throughput relentlessly: his correction bandwidth is the scarce resource, and every correction must flow into constitutions or golden sets via the distiller.
@@ -291,3 +462,8 @@ original-language artifact.
    outside the domain layer.
 8. Never translate away evidence: store original-language clauses and locators;
    translations are optional review artifacts only.
+9. Read `README.md`, `docs/phase-0-1-completion.md`,
+   `docs/public-corpus-validation.md`, and ADRs 0001-0003 before changing
+   architecture.
+10. Run the synthetic regression, public PDF suite, Ruff, and strict mypy before
+    every extractor, validator, prompt, constitution, schema, or routing change.
