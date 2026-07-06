@@ -17,10 +17,16 @@ from document_refinery.agents.public_schedules import (
 )
 from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
 from document_refinery.application.classification import EligibilityScheduleClassifier
+from document_refinery.application.corrections import (
+    CorrectionOutcome,
+    CorrectionRequest,
+    CorrectionService,
+)
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
 from document_refinery.infrastructure.artifacts import ArtifactStore, BronzeDocument
+from document_refinery.infrastructure.correction_log import CorrectionLog
 from document_refinery.infrastructure.layout import (
     LayoutAdapter,
     assert_layout_passed,
@@ -66,6 +72,8 @@ class RefineryPipeline:
         self.semantic_validator = semantic_validator
         self.semantic_calls = SemanticCallStore(workspace / "model_calls")
         self.gate = GateAService()
+        self.corrections = CorrectionService()
+        self.correction_log = CorrectionLog(workspace / "corrections")
         self.promotion = EligibilityPromotion()
 
     def run(
@@ -175,13 +183,45 @@ class RefineryPipeline:
             review_html=review_html,
         )
 
+    def apply_corrections(
+        self,
+        doc_id: str,
+        *,
+        requests: tuple[CorrectionRequest, ...],
+        reviewer: str,
+    ) -> CorrectionOutcome:
+        """Apply owner confirm/correct/dispute actions to a document under review.
+
+        The document must be awaiting Gate A. Corrections write a new ``reviewed``
+        silver stage (the ``validated`` stage stays immutable), append to the
+        durable correction log, and regenerate the review packet. The task stays
+        in ``gate_a_pending`` — disputes keep the owner in the loop and block
+        approval until they are re-confirmed or corrected.
+        """
+        task = self.tasks.get(doc_id)
+        if task.status is not TaskStatus.GATE_A_PENDING:
+            raise ValueError(f"document is not awaiting Gate A: {task.status}")
+        current = self._review_rows(doc_id)
+        outcome = self.corrections.apply(
+            extractions=current,
+            requests=requests,
+            reviewer=reviewer,
+        )
+        self.silver.write(outcome.rows, stage="reviewed")
+        self.correction_log.append(doc_id, outcome.records)
+        self.gate.create_review_packet(
+            output_directory=self.workspace / "reviews",
+            extractions=outcome.rows,
+        )
+        return outcome
+
     def approve(self, doc_id: str, *, approved_by: str) -> tuple[GoldEligibilityTerm, ...]:
         task = self.tasks.get(doc_id)
         if task.status is not TaskStatus.GATE_A_PENDING:
             raise ValueError(f"document is not awaiting Gate A: {task.status}")
-        validated = self.silver.read(doc_id, stage="validated")
+        reviewed = self._review_rows(doc_id)
         self.gate.decide(
-            extractions=validated,
+            extractions=reviewed,
             decided_by=approved_by,
             approved=True,
             note="Approved after review of the generated Gate A packet.",
@@ -189,11 +229,18 @@ class RefineryPipeline:
         self.tasks.transition(doc_id, TaskStatus.GATE_A_APPROVED)
         gold_rows = tuple(
             self.promotion.promote(group, knowledge_from=datetime.now(UTC))
-            for group in _group_eligibility_rows(validated)
+            for group in _group_eligibility_rows(reviewed)
         )
         self.gold.upsert(gold_rows)
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows
+
+    def _review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
+        """Latest silver under review: the corrected stage if any, else validated."""
+        try:
+            return self.silver.read(doc_id, stage="reviewed")
+        except FileNotFoundError:
+            return self.silver.read(doc_id, stage="validated")
 
     def close(self) -> None:
         self.tasks.close()
