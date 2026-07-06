@@ -8,6 +8,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
+from document_refinery.application.corrections import CorrectionAction, CorrectionRequest
 from document_refinery.application.pipeline import RefineryPipeline
 from document_refinery.domain.models import SilverExtraction
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
@@ -33,6 +34,20 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--approved-by")
     run.add_argument("--language", default="und")
     _add_semantic_options(run)
+
+    review = subcommands.add_parser(
+        "review",
+        help="apply owner confirm/correct/dispute actions to a Gate A packet",
+    )
+    review.add_argument("doc_id")
+    review.add_argument("--workspace", type=Path, required=True)
+    review.add_argument(
+        "--corrections",
+        type=Path,
+        required=True,
+        help="corrections JSON exported from the review packet",
+    )
+    review.add_argument("--reviewer", required=True)
 
     approve = subcommands.add_parser(
         "approve",
@@ -113,6 +128,29 @@ def main() -> int:
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
         )
+    elif args.command == "review":
+        pipeline = RefineryPipeline(args.workspace)
+        try:
+            requests = _load_corrections(args.corrections)
+            outcome = pipeline.apply_corrections(
+                args.doc_id,
+                requests=requests,
+                reviewer=args.reviewer,
+            )
+            counts: dict[str, int] = {}
+            for record in outcome.records:
+                counts[record.action.value] = counts.get(record.action.value, 0) + 1
+            print(
+                json.dumps(
+                    {
+                        "doc_id": args.doc_id,
+                        "applied": len(outcome.records),
+                        "actions": counts,
+                    }
+                )
+            )
+        finally:
+            pipeline.close()
     elif args.command == "approve":
         pipeline = RefineryPipeline(args.workspace)
         try:
@@ -217,6 +255,27 @@ def _run_documents(
             print(f"Quality report: {quality_path}")
     finally:
         pipeline.close()
+
+
+def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    entries = payload.get("corrections") if isinstance(payload, dict) else payload
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("corrections file must contain a non-empty 'corrections' list")
+    requests: list[CorrectionRequest] = []
+    for entry in entries:
+        requests.append(
+            CorrectionRequest(
+                extraction_id=str(entry["extraction_id"]),
+                action=CorrectionAction(str(entry["action"])),
+                corrected_value=(
+                    None if entry.get("corrected_value") is None
+                    else str(entry["corrected_value"])
+                ),
+                note=None if entry.get("note") is None else str(entry["note"]),
+            )
+        )
+    return tuple(requests)
 
 
 def _build_semantic_components(

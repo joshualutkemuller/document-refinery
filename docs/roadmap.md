@@ -23,6 +23,7 @@
 - [ ] Select two or three pilot counterparties
 - [ ] Confirm verbatim-clause data-handling policy
 - [x] Initial Gate A review UX (generated HTML and JSON)
+- [x] Authenticated correction/dispute workflow (interactive packet + trusted CLI + correction log)
 - [ ] Curate at least ten owner-verified schedule extractions
 - [ ] Provide the FRED pipeline bitemporal helpers for convention alignment
 - [ ] Name the first Autopilot rule-engine contract/version
@@ -34,7 +35,8 @@
 2. Select and implement production object-storage plus any owner-approved OCR
    adapter needed for image-only documents.
 3. Implement managed Delta merge jobs from the tested promotion behavior.
-4. Connect the review packet to the owner's preferred authenticated UI.
+4. Connect the correction/dispute workflow to the owner's preferred hosted
+   authenticated UI (the local CLI baseline is implemented).
 5. Promote or replace synthetic cases with ten owner-verified documents.
 6. Release only after ≥95% field accuracy, full gold lineage, and owner review
    time ≤15 minutes per document.
