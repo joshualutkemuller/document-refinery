@@ -1,0 +1,163 @@
+[
+  {
+    "case_id": "synthetic-01",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Atlas Bank\nAgreement ID: AGR-001\nSchedule Version: 2026-01\nMargin Type: VM\nValid From: 2026-01-01\nAsset: GOVT_US | Eligible: yes | Haircut: 2% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD, EUR | Rating Floor: AA- | Tenor Cap Days: 3650",
+    "expected": {
+      "eligibility[0].counterparty": "Atlas Bank",
+      "eligibility[0].agreement_id": "AGR-001",
+      "eligibility[0].schedule_version": "2026-01",
+      "eligibility[0].margin_type": "VM",
+      "eligibility[0].valid_from": "2026-01-01",
+      "eligibility[0].asset_criterion": "GOVT_US",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "2",
+      "eligibility[0].currency_scope": "USD,EUR"
+    }
+  },
+  {
+    "case_id": "synthetic-02",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Beacon Securities\nAgreement ID: AGR-002\nSchedule Version: 2026-02\nMargin Type: IM\nValid From: 2026-02-01\nAsset: GOVT_DE | Eligible: true | Haircut: 3.5% | Concentration Limit: 80% | Concentration Basis: posted collateral | Currencies: EUR | Rating Floor: A | Tenor Cap Days: 1825",
+    "expected": {
+      "eligibility[0].counterparty": "Beacon Securities",
+      "eligibility[0].agreement_id": "AGR-002",
+      "eligibility[0].schedule_version": "2026-02",
+      "eligibility[0].margin_type": "IM",
+      "eligibility[0].valid_from": "2026-02-01",
+      "eligibility[0].asset_criterion": "GOVT_DE",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "3.5",
+      "eligibility[0].currency_scope": "EUR"
+    }
+  },
+  {
+    "case_id": "synthetic-03",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Cedar Capital\nAgreement ID: AGR-003\nSchedule Version: 2026-03\nMargin Type: Repo\nValid From: 2026-03-01\nAsset: CORP_IG_US | Eligible: eligible | Haircut: 6% | Concentration Limit: 40% | Concentration Basis: net exposure | Currencies: USD | Rating Floor: BBB- | Tenor Cap Days: 730",
+    "expected": {
+      "eligibility[0].counterparty": "Cedar Capital",
+      "eligibility[0].agreement_id": "AGR-003",
+      "eligibility[0].schedule_version": "2026-03",
+      "eligibility[0].margin_type": "Repo",
+      "eligibility[0].valid_from": "2026-03-01",
+      "eligibility[0].asset_criterion": "CORP_IG_US",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "6",
+      "eligibility[0].currency_scope": "USD"
+    }
+  },
+  {
+    "case_id": "synthetic-04",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Delta Markets\nAgreement ID: AGR-004\nSchedule Version: 2026-04\nMargin Type: VM\nValid From: 2026-04-01\nAsset: EQUITY_SP500 | Eligible: no | Haircut: 15% | Concentration Limit: 25% | Concentration Basis: gross collateral | Currencies: USD | Tenor Cap Days: 365",
+    "expected": {
+      "eligibility[0].counterparty": "Delta Markets",
+      "eligibility[0].agreement_id": "AGR-004",
+      "eligibility[0].schedule_version": "2026-04",
+      "eligibility[0].margin_type": "VM",
+      "eligibility[0].valid_from": "2026-04-01",
+      "eligibility[0].asset_criterion": "EQUITY_SP500",
+      "eligibility[0].eligible": "false",
+      "eligibility[0].haircut_pct": "15",
+      "eligibility[0].currency_scope": "USD"
+    }
+  },
+  {
+    "case_id": "synthetic-05",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Elm Clearing\nAgreement ID: AGR-005\nSchedule Version: 2026-05\nMargin Type: IM\nValid From: 2026-05-01\nAsset: CASH | Eligible: yes | Haircut: 0% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD, GBP, EUR",
+    "expected": {
+      "eligibility[0].counterparty": "Elm Clearing",
+      "eligibility[0].agreement_id": "AGR-005",
+      "eligibility[0].schedule_version": "2026-05",
+      "eligibility[0].margin_type": "IM",
+      "eligibility[0].valid_from": "2026-05-01",
+      "eligibility[0].asset_criterion": "CASH",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "0",
+      "eligibility[0].currency_scope": "USD,GBP,EUR"
+    }
+  },
+  {
+    "case_id": "synthetic-06",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Fjord Finance\nAgreement ID: AGR-006\nSchedule Version: 2026-06\nMargin Type: Repo\nValid From: 2026-06-01\nAsset: GOVT_GB | Eligible: true | Haircut: 2.25% | Concentration Limit: 90% | Concentration Basis: market value | Currencies: GBP | Rating Floor: AA | Tenor Cap Days: 2555",
+    "expected": {
+      "eligibility[0].counterparty": "Fjord Finance",
+      "eligibility[0].agreement_id": "AGR-006",
+      "eligibility[0].schedule_version": "2026-06",
+      "eligibility[0].margin_type": "Repo",
+      "eligibility[0].valid_from": "2026-06-01",
+      "eligibility[0].asset_criterion": "GOVT_GB",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "2.25",
+      "eligibility[0].currency_scope": "GBP"
+    }
+  },
+  {
+    "case_id": "synthetic-07",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Grove Partners\nAgreement ID: AGR-007\nSchedule Version: 2026-07\nMargin Type: VM\nValid From: 2026-07-01\nAsset: ABS_PRIME | Eligible: false | Haircut: 20% | Concentration Limit: 10% | Concentration Basis: posted collateral | Currencies: USD | Rating Floor: AAA | Tenor Cap Days: 365",
+    "expected": {
+      "eligibility[0].counterparty": "Grove Partners",
+      "eligibility[0].agreement_id": "AGR-007",
+      "eligibility[0].schedule_version": "2026-07",
+      "eligibility[0].margin_type": "VM",
+      "eligibility[0].valid_from": "2026-07-01",
+      "eligibility[0].asset_criterion": "ABS_PRIME",
+      "eligibility[0].eligible": "false",
+      "eligibility[0].haircut_pct": "20",
+      "eligibility[0].currency_scope": "USD"
+    }
+  },
+  {
+    "case_id": "synthetic-08",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Harbor Bank\nAgreement ID: AGR-008\nSchedule Version: 2026-08\nMargin Type: IM\nValid From: 2026-08-01\nAsset: GOVT_JP | Eligible: yes | Haircut: 4% | Concentration Limit: 75% | Concentration Basis: market value | Currencies: JPY | Rating Floor: A+ | Tenor Cap Days: 3650",
+    "expected": {
+      "eligibility[0].counterparty": "Harbor Bank",
+      "eligibility[0].agreement_id": "AGR-008",
+      "eligibility[0].schedule_version": "2026-08",
+      "eligibility[0].margin_type": "IM",
+      "eligibility[0].valid_from": "2026-08-01",
+      "eligibility[0].asset_criterion": "GOVT_JP",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "4",
+      "eligibility[0].currency_scope": "JPY"
+    }
+  },
+  {
+    "case_id": "synthetic-09",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Ion Brokerage\nAgreement ID: AGR-009\nSchedule Version: 2026-09\nMargin Type: Repo\nValid From: 2026-09-01\nAsset: COVERED_BOND_EU | Eligible: true | Haircut: 5.5% | Concentration Limit: 35% | Concentration Basis: net exposure | Currencies: EUR, CHF | Rating Floor: AA- | Tenor Cap Days: 1095",
+    "expected": {
+      "eligibility[0].counterparty": "Ion Brokerage",
+      "eligibility[0].agreement_id": "AGR-009",
+      "eligibility[0].schedule_version": "2026-09",
+      "eligibility[0].margin_type": "Repo",
+      "eligibility[0].valid_from": "2026-09-01",
+      "eligibility[0].asset_criterion": "COVERED_BOND_EU",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "5.5",
+      "eligibility[0].currency_scope": "EUR,CHF"
+    }
+  },
+  {
+    "case_id": "synthetic-10",
+    "owner_verified": false,
+    "text": "Collateral Eligibility Schedule\nEligible Collateral\nCounterparty: Juniper Securities\nAgreement ID: AGR-010\nSchedule Version: 2026-10\nMargin Type: VM\nValid From: 2026-10-01\nAsset: AGENCY_MBS | Eligible: eligible | Haircut: 7% | Concentration Limit: 50% | Concentration Basis: gross collateral | Currencies: USD | Rating Floor: AA+ | Tenor Cap Days: 1825",
+    "expected": {
+      "eligibility[0].counterparty": "Juniper Securities",
+      "eligibility[0].agreement_id": "AGR-010",
+      "eligibility[0].schedule_version": "2026-10",
+      "eligibility[0].margin_type": "VM",
+      "eligibility[0].valid_from": "2026-10-01",
+      "eligibility[0].asset_criterion": "AGENCY_MBS",
+      "eligibility[0].eligible": "true",
+      "eligibility[0].haircut_pct": "7",
+      "eligibility[0].currency_scope": "USD"
+    }
+  }
+]
+

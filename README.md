@@ -4,14 +4,16 @@ Document Refinery turns financial documents into auditable, bitemporal,
 quant-ready records. The first supported document class is collateral
 eligibility schedules.
 
-The repository currently provides the Phase 0/1 domain foundation:
+The repository provides a complete local Phase 0/1 vertical slice:
 
-- immutable bronze, clause-level silver, and bitemporal gold SQL contracts;
-- strict silver and gold domain models;
-- deterministic eligibility-term promotion;
-- independently defined extractor and validator prompt contracts;
-- golden-set accuracy scoring and release gates;
-- unit tests for lineage, ambiguity, promotion, bitemporal history, and gates.
+- immutable content-addressed bronze, text, and layout artifacts;
+- landing-zone discovery and a durable task-state workflow;
+- conservative classification and clause-level extraction;
+- independent validation and HTML/JSON Gate A review packets;
+- deterministic, lineage-complete bitemporal gold promotion;
+- executive, dashboard, and audit quality outputs;
+- a ten-document synthetic regression corpus with separate technical and
+  owner-verification gates.
 
 ## Non-negotiable invariants
 
@@ -37,6 +39,20 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 pytest
 document-refinery ddl
+document-refinery regression --json
+```
+
+Process one schedule and stop for Gate A review:
+
+```bash
+document-refinery run schedule.txt --workspace .refinery
+```
+
+After reviewing the generated HTML packet, an identified reviewer can approve
+and land gold:
+
+```bash
+document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
 ```
 
 ## Repository map
@@ -46,16 +62,20 @@ src/document_refinery/
   agents/       independent extractor and validator contracts
   application/  deterministic promotion and bitemporal history
   domain/       canonical value objects and invariants
+  infrastructure/ local artifact, task, silver, and gold adapters
   quality/      golden-set metrics and release gates
 sql/            Databricks/Delta DDL
 tests/          executable specification of locked decisions
 docs/adr/       architecture decisions
 ```
 
-## What remains evidence-dependent
+## Acceptance status
 
-OCR/layout tooling will be selected only after benchmarking three representative
-documents (scanned, multi-column, and nested-table). The owner must also provide
-at least ten verified schedules, pilot counterparties, and the chosen review UX
-before Phase 1 can meet its exit criteria.
+Phase 0/1 engineering is complete and executable locally. Production acceptance
+remains evidence-dependent: OCR/layout tooling must be benchmarked on three real
+representative documents, and the synthetic corpus must be replaced or promoted
+with at least ten owner-verified schedules. The release gate reports
+`phase_one_release_ready=false` until that evidence exists.
 
+See [Phase 0/1 completion](docs/phase-0-1-completion.md) for the distinction
+between delivered capability and owner acceptance.
