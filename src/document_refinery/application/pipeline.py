@@ -178,11 +178,11 @@ class RefineryPipeline:
             approved=True,
             note="Approved through the Phase 1 pipeline.",
         )
-        self.tasks.transition(document.doc_id, TaskStatus.GATE_A_APPROVED)
         gold_rows = tuple(
             self.promotion.promote(group, knowledge_from=datetime.now(UTC))
             for group in _group_eligibility_rows(validated)
         )
+        self.tasks.transition(document.doc_id, TaskStatus.GATE_A_APPROVED)
         self.gold.upsert(gold_rows)
         self.tasks.transition(document.doc_id, TaskStatus.GOLD_LANDED)
         return PipelineResult(
@@ -237,11 +237,13 @@ class RefineryPipeline:
             approved=True,
             note="Approved after review of the generated Gate A packet.",
         )
-        self.tasks.transition(doc_id, TaskStatus.GATE_A_APPROVED)
+        # Promote before transitioning: a PromotionError then leaves the task at
+        # gate_a_pending (recoverable via corrections), not stuck in approved.
         gold_rows = tuple(
             self.promotion.promote(group, knowledge_from=datetime.now(UTC))
             for group in _group_eligibility_rows(reviewed)
         )
+        self.tasks.transition(doc_id, TaskStatus.GATE_A_APPROVED)
         self.gold.upsert(gold_rows)
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows

@@ -501,10 +501,10 @@ def _extraction_response_schema() -> dict[str, object]:
                     "type": "object",
                     "additionalProperties": False,
                     "properties": properties,
-                    "required": sorted(
-                        SemanticExtractor._ALLOWED_KEYS
-                        - {"unit", "currency", "ambiguity_note"}
-                    ),
+                    # OpenAI strict structured outputs require every property in
+                    # `required`; optionality is expressed by nullable types
+                    # (unit/currency/ambiguity_note are ["string", "null"]).
+                    "required": sorted(properties),
                 },
             }
         },
@@ -538,12 +538,9 @@ def _validation_response_schema() -> dict[str, object]:
                     "type": "object",
                     "additionalProperties": False,
                     "properties": properties,
-                    "required": [
-                        "extraction_id",
-                        "status",
-                        "evidence_clause",
-                        "evidence_locator",
-                    ],
+                    # Strict structured outputs: every property must be required;
+                    # corrected_value/note are nullable for the optional case.
+                    "required": sorted(properties),
                 },
             }
         },

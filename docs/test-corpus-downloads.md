@@ -24,9 +24,12 @@ prints the observed route:
 - `deterministic` → it matched a known profile and reached Gate A. Re-run with
   `--route deterministic --profile <name> --expected-records <N>`.
 - `classification_review` → unknown layout; it correctly stops for owner review.
-  To actually extract it, configure a semantic provider (see the README's
-  `--semantic-provider openai` options) — the two model sessions then run the
-  Gate A path.
+  To actually extract it, configure a semantic provider. Use
+  `--semantic-provider openai` for real extraction (needs `OPENAI_API_KEY` +
+  network), or `--semantic-provider local` to run the offline heuristic double
+  end-to-end with no key/network (good for verifying the pipeline plumbing on a
+  new document before spending API calls). See the README's "Running an unknown
+  layout" section.
 
 Notes before you download:
 

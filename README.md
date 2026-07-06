@@ -114,6 +114,31 @@ reviewer approves and lands gold:
 document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
 ```
 
+### Running an unknown layout (semantic path)
+
+Documents that do not match a deterministic profile route to classification
+review and stop unless a semantic extractor is configured. Two providers:
+
+```bash
+# Production: approved OpenAI provider (needs OPENAI_API_KEY + network + ZDR policy)
+document-refinery run doc.pdf --workspace .refinery \
+  --semantic-provider openai \
+  --semantic-extractor-model gpt-5.5 --semantic-validator-model gpt-5.5
+
+# Local: offline heuristic double for testing the pipeline with no key/network
+document-refinery run example_schedules/Example6_synthetic-triparty-eligibility-profile.txt \
+  --workspace .refinery --semantic-provider local
+```
+
+The local provider runs the full unknown-layout route — separate extractor and
+validator sessions, strict schema-to-silver conversion, semantic audit records,
+and Gate A — so you can exercise the plumbing without a provider account. It is a
+heuristic test double for the pipe-delimited/`Key: Value` schedule layout, **not**
+a production extractor and it makes no accuracy claim; use `openai` for real
+documents. Gold promotion still requires the economic fields (`margin_type`,
+`schedule_version`, `valid_from`, …); when they are absent, `approve` reports
+`gold_promotion_blocked` and the document stays recoverable at Gate A.
+
 Run the five provenance-tracked public examples:
 
 ```bash
