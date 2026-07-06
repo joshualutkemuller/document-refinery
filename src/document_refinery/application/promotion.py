@@ -6,7 +6,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import date, datetime
 
-from document_refinery.domain.models import GoldEligibilityTerm, MarginType, SilverExtraction
+from document_refinery.domain.models import (
+    GoldEligibilityTerm,
+    MarginType,
+    SilverExtraction,
+    ValidatorStatus,
+    ValueType,
+)
 
 
 class PromotionError(ValueError):
@@ -35,13 +41,20 @@ class EligibilityPromotion:
         rows = tuple(extractions)
         if not rows:
             raise PromotionError("at least one silver extraction is required")
-        if any(not row.is_promotable for row in rows):
-            raise PromotionError("all silver rows must be confirmed, unambiguous, and found")
+        if any(
+            row.validator_status
+            not in {ValidatorStatus.CONFIRMED, ValidatorStatus.CORRECTED}
+            or row.ambiguity_flag
+            for row in rows
+        ):
+            raise PromotionError("all silver rows must be confirmed and unambiguous")
         doc_ids = {row.doc_id for row in rows}
         if len(doc_ids) != 1:
             raise PromotionError("a gold record cannot combine multiple documents")
 
-        fields = self._index(rows)
+        fields = self._index(
+            tuple(row for row in rows if row.value_type is not ValueType.NOT_FOUND)
+        )
         missing = self.REQUIRED_FIELDS - fields.keys()
         if missing:
             raise PromotionError(f"missing required fields: {', '.join(sorted(missing))}")
