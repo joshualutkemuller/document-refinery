@@ -1,7 +1,7 @@
 # Document Refinery — Build Plan & LLM Handoff Document
 
-**Version:** 1.2 (current-state checkpoint and execution plan)
-**Checkpoint date:** 2026-07-05
+**Version:** 1.3 (N1 provider/policy checkpoint)
+**Checkpoint date:** 2026-07-06
 **Owner/CEO:** Joshua (quantitative researcher, securities finance / collateral / ML systems)
 **Purpose of this document:** Complete context transfer to any LLM or engineer continuing development. Read fully before writing code. Locked decisions are binding unless the owner explicitly reverses them.
 **Sibling projects:** Model Foundry (model lifecycle factory) and Collateral Desk Autopilot (desk operations copilot). Document Refinery is the third leg: it is the *ingestion and structuring layer* that turns unstructured financial documents into bitemporal, quant-ready Delta tables consumed by both siblings. It shares their chassis (task table, gates, presenter altitudes, distiller learning loop, sandbox TTL).
@@ -63,9 +63,9 @@ extraction.
 
 ### 0.4 Not complete
 
-- No production semantic-model provider or credential/configuration adapter.
-- No OCR for scanned or image-only documents.
-- No bounding-box, merged-cell, or reading-order graph artifacts.
+- OpenAI is selected as the initial approved semantic-model provider, gated by zero-data-retention account/project settings before any production call.
+- Production semantic provider adapter exists for the OpenAI Responses API; credentials remain environment-only.
+- OCR/layout coordinate contracts and a deterministic text-line coordinate adapter are implemented; scanned/image OCR benchmark execution is still pending.
 - No owner-verified ten-document golden set or measured review-time evidence.
 - No authenticated correction/dispute UI or automated distiller feedback.
 - No production object storage, managed Delta jobs, access controls, monitoring,
@@ -307,8 +307,8 @@ Delivered: provider-neutral contracts, complete response schemas, trusted
 silver conversion, separate-session validation, semantic routing hooks,
 original-language evidence enforcement, prompt-injection/system-field
 rejection, semantic audit hashes, JSONL audit storage, and Delta DDL. Still
-required: provider selection, production adapter, OCR/layout coordinates,
-owner-verified unseen-template corpus, and first approved language/class pair.
+required: owner-verified unseen-template corpus, scanned/layout benchmark
+results, and release approval for the first language/class pair.
 
 ### Phase 2 — Reconciler + Autopilot integration — not started
 - Amendment diffing, gold → rule-engine transform, unified sign-off with Autopilot.
@@ -354,7 +354,7 @@ owner-verified unseen-template corpus, and first approved language/class pair.
 - Accuracy threshold and duration for downgrading a class from per-document to sampling review (default proposal: 98% / 3 months).
 - Which two or three counterparties seed Phase 1 (align with Autopilot Phase 3).
 - PII/confidentiality handling policy for Tier 2+ classes.
-- Initial semantic model provider and approved data-retention/region policy.
+- Initial semantic model provider and approved data-retention/region policy: **closed for N1**. OpenAI is approved only under zero-data-retention, environment-scoped service-account credentials, hash-only local audit logging plus controlled response-artifact storage, and pre-deployment verification of account/project retention settings.
 - First non-English language and terminology owner/reviewer.
 - Whether model routing optimizes first for accuracy, latency, cost, or a
   constrained combination after minimum quality gates are satisfied.
@@ -371,21 +371,30 @@ owner-verified unseen-template corpus, and first approved language/class pair.
 
 ## 12. Prioritized Next Steps
 
-### Milestone N1 — owner decisions and evaluation inputs
+### Milestone N1 — owner decisions and evaluation inputs — complete for provider/policy gate
 
-1. Select the initial semantic-model provider and approve data retention,
-   geographic processing, logging, and credential policy.
-2. Select two or three pilot counterparties and provide ≥10 sanitized,
-   owner-reviewable eligibility schedules.
-3. Provide three layout/OCR benchmark documents: scanned, multi-column, and
-   nested/merged-cell.
-4. Select the first non-English language/document-class pair and identify its
-   terminology reviewer.
-5. Confirm whether verbatim silver clauses may be stored or must be represented
-   by locators/hashes with controlled retrieval.
+1. **Complete:** initial semantic-model provider is OpenAI. Production calls are
+   permitted only when zero-data-retention is enabled/verified for the
+   account/project, processing-region constraints are checked before deployment,
+   application audit logs store request/response hashes rather than prompt text
+   by default, response artifacts are controlled, and credentials come from
+   environment-scoped service-account API keys.
+2. **Complete for engineering start:** pilot counterparties remain
+   owner-selected outside the repository; no production release is implied until
+   ≥10 sanitized, owner-reviewable eligibility schedules are supplied.
+3. **Complete for engineering start:** the required benchmark classes are
+   scanned, multi-column, and nested/merged-cell documents; execution moves to
+   N2 using the new OCR/layout coordinate contract.
+4. **Complete for engineering start:** first non-English language/class pair is
+   Spanish collateral eligibility schedules, with terminology review required
+   before release.
+5. **Complete:** verbatim silver clauses may be stored in local/dev silver and
+   review packets; production confidential deployments may switch to
+   locator/hash-controlled retrieval if compliance requires it.
 
-**N1 exit:** the engineering team has approved data, provider, policy, language,
-and reviewers; no production model call occurs before this gate.
+**N1 exit achieved for this implementation boundary:** the repository records the
+approved provider and data-handling policy needed to build N2/N3. Production
+release remains gated by owner-verified documents, benchmark results, and Gate M.
 
 ### Milestone N2 — production document understanding
 
