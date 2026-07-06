@@ -1,0 +1,9 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Coastal Reserve Trust
+Agreement ID: CSA-2021-US-0812
+Schedule Version: 2026-01
+Margin Type: VM
+Valid From: 2026-01-01
+Asset: Cash | Eligible: yes | Haircut: 0% | Concentration Limit: 100% | Concentration Basis: notional | Currencies: US Dollar, Euro
+Asset: US Treasury Bills (<= 1y) | Eligible: yes | Haircut: 0.5% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD | Tenor Cap Days: 365

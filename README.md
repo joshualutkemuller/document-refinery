@@ -207,6 +207,7 @@ download list and wire each one in with `scripts/add_corpus_document.py`.
 |---|---|
 | `document-refinery ddl` | Print packaged Delta DDL in migration order |
 | `document-refinery regression --json` | Run the synthetic ten-document regression corpus |
+| `document-refinery accuracy [--corpus DIR] [--json]` | Measure field accuracy against a golden corpus + ground truth |
 | `document-refinery run FILE --workspace DIR [--language TAG] [--semantic-provider openai]` | Process one document and stop at Gate A |
 | `document-refinery watch LANDING --workspace DIR [--language TAG] [--semantic-provider openai]` | Process every supported landing-zone document |
 | `document-refinery review DOC_ID --workspace DIR [--list] [--reviewer NAME] [--pending-only] [--corrections FILE]` | Confirm/correct/dispute silver rows in the terminal before Gate A |
@@ -242,6 +243,28 @@ The Delta adapter preserves the same bitemporal semantics (`valid_from/valid_to`
 a new Delta version, so point-in-time/time-travel queries and an audit history
 come from the `_delta_log`. `deltalake`/`pyarrow` are an optional extra — the
 core stays dependency-light and JSONL remains the default.
+
+## Measuring accuracy
+
+`document-refinery accuracy` scores the deterministic extractor against a golden
+corpus of documents with **independently authored ground truth**, reporting field
+accuracy, found-value accuracy, locator coverage, per-field and per-document
+breakdowns, concrete mismatches, and the Phase-1 release gate:
+
+```
+Field accuracy: 98.94% (373/377) across 10 documents (0 owner-verified).
+Found-value accuracy: 98.88%
+Locator coverage:     100.00%
+Weakest fields: currency_scope 96.6%, eligible 96.6%, haircut_pct 96.6%, margin_type 96.6%
+Phase-1 release gate: NOT READY (needs >=95% accuracy, >=10 docs, >=10 owner-verified).
+```
+
+The shipped corpus (`examples/golden_corpus/`, ten CSA/tri-party/repo/lending
+schedules) is **realistic synthetic** data modeled on real schedules — not real
+published documents and not owner-verified, so the gate stays `NOT READY` by
+design. The same command measures owner-verified real documents once supplied:
+point `--corpus` at a directory of `*.txt` schedules plus a `ground_truth.json`.
+Owner-verified accuracy on real documents is the remaining N4 release evidence.
 
 ## Storage and records
 

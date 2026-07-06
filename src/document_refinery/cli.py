@@ -35,6 +35,7 @@ from document_refinery.infrastructure.local_semantic import LocalHeuristicSemant
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
+from document_refinery.quality.accuracy import load_corpus, score_corpus
 from document_refinery.quality.dashboard import render_dashboard
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
@@ -99,6 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory.add_argument("--workspace", type=Path, required=True)
     memory.add_argument("--json", action="store_true", dest="as_json")
+
+    accuracy = subcommands.add_parser(
+        "accuracy",
+        help="measure extraction accuracy against a golden corpus + ground truth",
+    )
+    accuracy.add_argument(
+        "--corpus",
+        type=Path,
+        default=Path("examples/golden_corpus"),
+        help="directory of *.txt schedules + ground_truth.json",
+    )
+    accuracy.add_argument("--json", action="store_true", dest="as_json")
 
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
@@ -222,6 +235,8 @@ def main() -> int:
         return _run_review(args)
     elif args.command == "memory":
         return _run_memory(args)
+    elif args.command == "accuracy":
+        return _run_accuracy(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -408,6 +423,41 @@ def _run_review(args: argparse.Namespace) -> int:
         return 0
     finally:
         pipeline.close()
+
+
+def _run_accuracy(args: argparse.Namespace) -> int:
+    if not (args.corpus / "ground_truth.json").exists():
+        print(f"error: no ground_truth.json in {args.corpus}")
+        return 2
+    report = score_corpus(load_corpus(args.corpus))
+    if args.as_json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return 0
+    print(
+        f"Field accuracy: {report.field_accuracy:.2%} "
+        f"({report.correct_fields}/{report.total_fields}) "
+        f"across {report.document_count} documents "
+        f"({report.owner_verified_document_count} owner-verified)."
+    )
+    print(f"Found-value accuracy: {report.found_accuracy:.2%}")
+    print(f"Locator coverage:     {report.locator_coverage:.2%}")
+    print(f"Disputes:             {report.dispute_count}")
+    weakest = sorted(
+        ((c / t if t else 0.0, name) for name, (c, t) in report.per_field.items())
+    )[:5]
+    print("Weakest fields:")
+    for acc, name in weakest:
+        print(f"  {name}: {acc:.1%}")
+    if report.mismatches:
+        print(f"Mismatches ({len(report.mismatches)}):")
+        for m in report.mismatches[:15]:
+            print(f"  {m.case_id} {m.field_path}: got {m.actual!r}, want {m.expected!r}")
+    ready = "READY" if report.release_ready() else "NOT READY"
+    print(
+        f"Phase-1 release gate: {ready} "
+        "(needs >=95% accuracy, >=10 docs, >=10 owner-verified)."
+    )
+    return 0
 
 
 def _run_memory(args: argparse.Namespace) -> int:

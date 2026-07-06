@@ -1,0 +1,9 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Andes Frontier Bank
+Agreement ID: CSA-2022-EM-0459
+Schedule Version: 2026-02
+Margin Type: VM
+Valid From: 2026-02-01
+Asset: EM Sovereign USD Bonds | Eligible: Y | Haircut: 8% | Concentration Limit: 40% | Concentration Basis: market value | Currencies: USD | Rating Floor: BBB- | Tenor Cap Days: 3650
+Asset: EM Quasi-Sovereign USD Bonds | Eligible: yes | Haircut: 10% | Concentration Limit: 20% | Concentration Basis: market value | Currencies: USD | Rating Floor: BB+ | Tenor Cap Days: 1825

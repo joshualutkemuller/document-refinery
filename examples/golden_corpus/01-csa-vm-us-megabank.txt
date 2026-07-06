@@ -1,0 +1,12 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Sterling Bridge Bank, N.A.
+Agreement ID: CSA-2019-US-0442
+Schedule Version: 2026-01
+Margin Type: VM
+Valid From: 2026-01-01
+Asset: US Treasury Securities | Eligible: yes | Haircut: 0.5% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: USD | Tenor Cap Days: 10950
+Asset: US Agency Debentures | Eligible: yes | Haircut: 1% | Concentration Limit: 50% | Concentration Basis: market value | Currencies: USD | Rating Floor: AA- | Tenor Cap Days: 10950
+Asset: US Agency MBS | Eligible: yes | Haircut: 2% | Concentration Limit: 40% | Concentration Basis: market value | Currencies: USD | Rating Floor: AA- | Tenor Cap Days: 10950
+Asset: USD Investment-Grade Corporates | Eligible: yes | Haircut: 5% | Concentration Limit: 20% | Concentration Basis: market value | Currencies: USD | Rating Floor: A- | Tenor Cap Days: 3650
+Asset: US Large-Cap Equities | Eligible: yes | Haircut: 15% | Concentration Limit: 10% | Concentration Basis: market value | Currencies: USD

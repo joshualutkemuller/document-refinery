@@ -1,0 +1,11 @@
+Collateral Eligibility Schedule
+Eligible Collateral
+Counterparty: Meridian Global Markets SA
+Agreement ID: CSA-2018-EU-1177
+Schedule Version: 2026-02
+Margin Type: VM
+Valid From: 2026-02-01
+Asset: German Federal Bonds (Bunds) | Eligible: yes | Haircut: 0.5% | Concentration Limit: 100% | Concentration Basis: market value | Currencies: EUR | Tenor Cap Days: 10950
+Asset: French OATs | Eligible: yes | Haircut: 1% | Concentration Limit: 60% | Concentration Basis: market value | Currencies: EUR | Rating Floor: AA- | Tenor Cap Days: 10950
+Asset: EUR Covered Bonds (Pfandbriefe) | Eligible: yes | Haircut: 3% | Concentration Limit: 25% | Concentration Basis: market value | Currencies: EUR | Rating Floor: AAA | Tenor Cap Days: 3650
+Asset: EUR Investment-Grade Corporates | Eligible: yes | Haircut: 6% | Concentration Limit: 15% | Concentration Basis: market value | Currencies: EUR | Rating Floor: A- | Tenor Cap Days: 3650
