@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from document_refinery.agents.eligibility import (
     EligibilityAdversarialValidator,
@@ -60,6 +61,12 @@ class PipelineResult:
     review_html: Path
 
 
+class GoldRepository(Protocol):
+    """Storage seam for landing gold: JSONL (default) or Delta share this shape."""
+
+    def upsert(self, records: tuple[GoldEligibilityTerm, ...]) -> object: ...
+
+
 class RefineryPipeline:
     def __init__(
         self,
@@ -68,6 +75,7 @@ class RefineryPipeline:
         semantic_extractor: SemanticExtractor | None = None,
         semantic_validator: SemanticValidator | None = None,
         layout_adapter: LayoutAdapter | None = None,
+        gold_store: GoldRepository | None = None,
     ) -> None:
         if (semantic_extractor is None) != (semantic_validator is None):
             raise ValueError("semantic extractor and validator must be configured together")
@@ -75,7 +83,9 @@ class RefineryPipeline:
         self.artifacts = ArtifactStore(workspace / "artifacts", layout_adapter=layout_adapter)
         self.tasks = TaskStore(workspace / "refinery_tasks.sqlite3")
         self.silver = SilverStore(workspace / "silver")
-        self.gold = GoldStore(workspace / "gold" / "eligibility_terms.jsonl")
+        self.gold: GoldRepository = gold_store or GoldStore(
+            workspace / "gold" / "eligibility_terms.jsonl"
+        )
         self.classifier = EligibilityScheduleClassifier()
         self.extractor = EligibilityScheduleExtractor()
         self.validator = EligibilityAdversarialValidator()

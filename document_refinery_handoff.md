@@ -471,7 +471,11 @@ review time, no deterministic regression, and explicit owner release approval.
 ### Milestone N5 — production storage and full CSA economics
 
 1. Implement object-storage and managed Delta adapters for bronze, silver, gold,
-   workflow tasks, Gate A decisions, and semantic call audits.
+   workflow tasks, Gate A decisions, and semantic call audits. **Gold delivered:**
+   a `DeltaGoldStore` (delta-rs, no Spark) writes real versioned Delta tables for
+   `gold_eligibility_terms` to local or cloud object-store URIs, preserving
+   bitemporal semantics and clause lineage (`--gold-store delta`); bronze/silver/
+   tasks/audits remain local pending the same treatment.
 2. Add canonical `gold_csa_terms` fields for threshold, MTA, IA, rounding,
    eligible currencies, interest, dispute timing, custody, and reuse rights.
 3. Add schema migrations through Gate S and owner-verified CSA golden cases.
