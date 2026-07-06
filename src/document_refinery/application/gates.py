@@ -79,77 +79,25 @@ def _review_row_html(row: SilverExtraction) -> str:
     status = html.escape(row.validator_status.value)
     status_class = f' class="{status}"' if row.validator_status is ValidatorStatus.DISPUTED else ""
     return (
-        f'<tr data-extraction-id="{html.escape(row.extraction_id, quote=True)}">'
+        "<tr>"
         f"<td>{html.escape(row.field_path)}</td>"
         f"<td>{html.escape(row.effective_value)}</td>"
         f"<td{status_class}>{status}</td>"
         f"<td>{html.escape(row.source_locator)}</td>"
         f"<td>{html.escape(row.source_clause)}</td>"
-        '<td class="review">'
-        '<select class="action">'
-        '<option value="none">— no change —</option>'
-        '<option value="confirm">confirm</option>'
-        '<option value="correct">correct</option>'
-        '<option value="dispute">dispute</option>'
-        "</select>"
-        '<input class="corrected" placeholder="corrected value">'
-        '<input class="note" placeholder="note / dispute reason">'
-        "</td></tr>"
+        "</tr>"
     )
 
 
-# The review packet is a self-contained local file (no server): controls gather
-# reviewer actions and download a corrections JSON that the trusted CLI ingests.
-# The UI never writes silver directly (Locked Decision 11 spirit).
-_REVIEW_SCRIPT = """
-<script>
-function collectCorrections() {
-  const reviewer = document.getElementById('reviewer').value.trim();
-  const status = document.getElementById('status');
-  if (!reviewer) { status.textContent = 'Enter a reviewer name before exporting.'; return; }
-  const corrections = [];
-  for (const tr of document.querySelectorAll('tbody tr')) {
-    const action = tr.querySelector('.action').value;
-    if (action === 'none') continue;
-    const entry = { extraction_id: tr.dataset.extractionId, action };
-    const corrected = tr.querySelector('.corrected').value.trim();
-    const note = tr.querySelector('.note').value.trim();
-    if (action === 'correct') {
-      if (!corrected) { status.textContent = 'A correction needs a corrected value.'; return; }
-      entry.corrected_value = corrected;
-    }
-    if (action === 'dispute') {
-      if (!note) { status.textContent = 'A dispute needs a note.'; return; }
-    }
-    if (note) entry.note = note;
-    corrections.push(entry);
-  }
-  if (!corrections.length) { status.textContent = 'No actions selected.'; return; }
-  const payload = { doc_id: DOC_ID, reviewer, corrections };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = DOC_ID + '.corrections.json';
-  link.click();
-  URL.revokeObjectURL(link.href);
-  status.textContent = 'Exported ' + corrections.length + ' action(s). Apply with the CLI.';
-}
-</script>
-"""
-
-
 def _review_html(*, doc_id: str, rows: str) -> str:
+    # Read-only artifact for comfortable reading of clauses. All review actions
+    # (confirm/correct/dispute) happen through the `review` CLI, not this page.
     safe_doc = html.escape(doc_id)
-    doc_json = json.dumps(doc_id)
     style = (
         "body{font:14px system-ui;margin:2rem;color:#172033}"
         "table{border-collapse:collapse;width:100%}"
         "th,td{border:1px solid #ccd3df;padding:.5rem;text-align:left;vertical-align:top}"
         "th{background:#edf2f7} .disputed{color:#a01818;font-weight:600}"
-        ".review select,.review input{display:block;margin:.15rem 0;width:100%}"
-        ".review select,.review input{box-sizing:border-box}"
-        ".toolbar{margin:1rem 0;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}"
-        "#status{color:#0a5a2f}"
     )
     return (
         "<!doctype html>\n"
@@ -157,18 +105,12 @@ def _review_html(*, doc_id: str, rows: str) -> str:
         f"<title>Gate A review — {safe_doc}</title>\n"
         f"<style>{style}</style></head><body>\n"
         f"<h1>Gate A review — {safe_doc}</h1>\n"
-        "<p>Confirm, correct, or dispute each value against its clause and locator, "
-        "then export the corrections and apply them with the CLI. "
-        "Disputes block approval until resolved.</p>\n"
-        '<div class="toolbar">'
-        '<label>Reviewer <input id="reviewer" placeholder="identified reviewer"></label>'
-        '<button onclick="collectCorrections()">Export corrections JSON</button>'
-        '<span id="status"></span></div>\n'
+        "<p>Read-only view. Confirm, correct, or dispute each value with the "
+        "<code>document-refinery review</code> CLI; disputes block approval "
+        "until resolved.</p>\n"
         "<table><thead><tr><th>Field</th><th>Value</th><th>Validator</th>"
-        "<th>Locator</th><th>Clause</th><th>Review action</th></tr></thead>"
+        "<th>Locator</th><th>Clause</th></tr></thead>"
         f"<tbody>{rows}</tbody></table>\n"
-        f"<script>const DOC_ID = {doc_json};</script>\n"
-        f"{_REVIEW_SCRIPT}"
         "</body></html>\n"
     )
 

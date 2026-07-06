@@ -8,8 +8,16 @@ from importlib.resources import files
 from pathlib import Path
 
 from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
-from document_refinery.application.corrections import CorrectionAction, CorrectionRequest
-from document_refinery.application.pipeline import RefineryPipeline
+from document_refinery.application.corrections import (
+    CorrectionAction,
+    CorrectionOutcome,
+    CorrectionRequest,
+)
+from document_refinery.application.pipeline import (
+    ClassificationReviewRequired,
+    RefineryPipeline,
+)
+from document_refinery.application.review_session import build_review_requests, render_review
 from document_refinery.domain.models import SilverExtraction
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
@@ -37,17 +45,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     review = subcommands.add_parser(
         "review",
-        help="apply owner confirm/correct/dispute actions to a Gate A packet",
+        help="review a Gate A packet in the terminal (confirm/correct/dispute)",
     )
     review.add_argument("doc_id")
     review.add_argument("--workspace", type=Path, required=True)
+    review.add_argument("--reviewer", help="identified reviewer (required to apply changes)")
+    review.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_only",
+        help="print the packet read-only and exit; no reviewer needed",
+    )
+    review.add_argument(
+        "--pending-only",
+        action="store_true",
+        dest="pending_only",
+        help="walk only fields needing attention (skip already-confirmed ones)",
+    )
     review.add_argument(
         "--corrections",
         type=Path,
-        required=True,
-        help="corrections JSON exported from the review packet",
+        help="apply actions non-interactively from a corrections JSON file",
     )
-    review.add_argument("--reviewer", required=True)
 
     approve = subcommands.add_parser(
         "approve",
@@ -129,28 +148,7 @@ def main() -> int:
             semantic_max_retries=args.semantic_max_retries,
         )
     elif args.command == "review":
-        pipeline = RefineryPipeline(args.workspace)
-        try:
-            requests = _load_corrections(args.corrections)
-            outcome = pipeline.apply_corrections(
-                args.doc_id,
-                requests=requests,
-                reviewer=args.reviewer,
-            )
-            counts: dict[str, int] = {}
-            for record in outcome.records:
-                counts[record.action.value] = counts.get(record.action.value, 0) + 1
-            print(
-                json.dumps(
-                    {
-                        "doc_id": args.doc_id,
-                        "applied": len(outcome.records),
-                        "actions": counts,
-                    }
-                )
-            )
-        finally:
-            pipeline.close()
+        return _run_review(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(args.workspace)
         try:
@@ -217,12 +215,26 @@ def _run_documents(
     all_rows: list[SilverExtraction] = []
     try:
         for path in paths:
-            result = pipeline.run(
-                path,
-                source=source,
-                approved_by=approved_by,
-                language=language,
-            )
+            try:
+                result = pipeline.run(
+                    path,
+                    source=source,
+                    approved_by=approved_by,
+                    language=language,
+                )
+            except ClassificationReviewRequired as review:
+                # Unknown layout with no semantic extractor configured: report and
+                # keep processing the batch instead of aborting on one document.
+                print(
+                    json.dumps(
+                        {
+                            "path": str(path),
+                            "task_status": "classification_review_required",
+                            "confidence": round(review.confidence, 2),
+                        }
+                    )
+                )
+                continue
             all_rows.extend(result.silver_rows)
             print(
                 json.dumps(
@@ -255,6 +267,47 @@ def _run_documents(
             print(f"Quality report: {quality_path}")
     finally:
         pipeline.close()
+
+
+def _run_review(args: argparse.Namespace) -> int:
+    pipeline = RefineryPipeline(args.workspace)
+    try:
+        if args.list_only:
+            rows = pipeline.review_rows(args.doc_id)
+            print(render_review(rows))
+            return 0
+        if not args.reviewer:
+            print("error: --reviewer is required to apply review actions")
+            return 2
+        if args.corrections is not None:
+            requests = _load_corrections(args.corrections)
+        else:
+            rows = pipeline.review_rows(args.doc_id)
+            requests = build_review_requests(
+                rows,
+                prompt=input,
+                echo=print,
+                pending_only=args.pending_only,
+            )
+        if not requests:
+            print(json.dumps({"doc_id": args.doc_id, "applied": 0, "actions": {}}))
+            return 0
+        outcome = pipeline.apply_corrections(
+            args.doc_id,
+            requests=requests,
+            reviewer=args.reviewer,
+        )
+        print(json.dumps(_review_summary(args.doc_id, outcome)))
+        return 0
+    finally:
+        pipeline.close()
+
+
+def _review_summary(doc_id: str, outcome: CorrectionOutcome) -> dict[str, object]:
+    counts: dict[str, int] = {}
+    for record in outcome.records:
+        counts[record.action.value] = counts.get(record.action.value, 0) + 1
+    return {"doc_id": doc_id, "applied": len(outcome.records), "actions": counts}
 
 
 def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:

@@ -1,0 +1,25 @@
+SYNTHETIC TRIPARTY COLLATERAL PROFILE — NOT A REAL PUBLISHED DOCUMENT
+
+This document is a synthetic fixture created for Document Refinery corpus
+testing. It carries no provenance and does not reproduce any real institution's
+published terms. Its purpose is to exercise conservative classification-review
+routing for unknown document layouts — the same path that real triparty
+schedules (e.g. Clearstream CmaX / GC Pooling, BNY, J.P. Morgan) and negotiated
+CSAs follow until an approved semantic extractor is configured.
+
+Profile Reference: TP-PROFILE-EU-GOVT-01
+Service: Triparty Collateral Management
+Collateral Giver: Example Counterparty AG
+Effective: 2026-04-01
+
+Acceptable Collateral Profile
+
+Asset Class: EU Government Bonds | Valuation Haircut: 1.5% | Concentration Cap: 40% of basket | Rating Floor: A- | Currencies: EUR | Residual Maturity Cap: 30 years
+Asset Class: Supranational and Agency | Valuation Haircut: 2.0% | Concentration Cap: 25% of basket | Rating Floor: AA- | Currencies: EUR, USD | Residual Maturity Cap: 15 years
+Asset Class: Covered Bonds | Valuation Haircut: 3.5% | Concentration Cap: 15% of basket | Rating Floor: AAA | Currencies: EUR | Residual Maturity Cap: 10 years
+Asset Class: Main-Index Equities | Valuation Haircut: 8.0% | Concentration Cap: 10% of basket | Rating Floor: n/a | Currencies: EUR, USD, GBP | Residual Maturity Cap: n/a
+
+Allocation Notes
+- Haircuts are floors; the triparty agent may apply a wider haircut.
+- Concentration caps apply per basket on market value.
+- Securities on issuer exclusion lists are not acceptable regardless of class.

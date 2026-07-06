@@ -3,9 +3,19 @@
 These files are public examples used to exercise document classification,
 table/text extraction, clause lineage, validation, and Gate A review.
 `manifest.json` records the authoritative source URL, retrieval date, SHA-256
-hash, parser profile, and minimum expected record count for every document.
+hash, parser profile, and expected pipeline route for every document.
 
-Run the complete corpus:
+Each manifest entry declares an `expected_route`:
+
+- `deterministic` — a known profile parses the document; it reaches
+  `gate_a_pending` with at least `expected_minimum_eligibility_records`.
+- `classification_review` — an unknown layout the classifier conservatively
+  sends to owner review; without a configured semantic extractor the pipeline
+  stops rather than force-parsing it. `Example6` is a synthetic fixture that
+  exercises this route (real CSAs, triparty schedules, and central-bank haircut
+  tables behave the same way).
+
+Run the deterministic documents:
 
 ```bash
 document-refinery watch example_schedules \
@@ -13,8 +23,24 @@ document-refinery watch example_schedules \
   --source public-example
 ```
 
-The expected result is five documents in `gate_a_pending`, with a JSON and HTML
-review packet for each. The command intentionally does not approve Gate A.
+The five deterministic documents reach `gate_a_pending`, each with a JSON and
+HTML review packet; the command intentionally does not approve Gate A. The
+synthetic `Example6` stops at classification review by design.
+
+## Adding a document
+
+Download the file (this repo's CI environment cannot fetch external hosts) and
+wire it in with the helper, which computes the SHA-256, copies the file here,
+and upserts the manifest entry. `--check` runs the pipeline first and reports the
+actual route so you can set `--route` correctly:
+
+```bash
+python scripts/add_corpus_document.py path/to/file.pdf \
+  --title "..." --source-url "https://..." \
+  --route classification_review --profile unknown --check
+```
+
+See `docs/test-corpus-downloads.md` for a curated list of real documents to add.
 
 Important limitations:
 

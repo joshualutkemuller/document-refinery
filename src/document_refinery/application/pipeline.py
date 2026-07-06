@@ -37,6 +37,19 @@ from document_refinery.infrastructure.records import GoldStore, SilverStore
 from document_refinery.infrastructure.tasks import TaskStatus, TaskStore
 
 
+class ClassificationReviewRequired(ValueError):
+    """Raised when an unknown layout must go to owner review and no semantic
+    extractor is configured. Subclasses ValueError so callers can catch it by
+    type while existing message-based handling keeps working."""
+
+    def __init__(self, doc_id: str, confidence: float) -> None:
+        self.doc_id = doc_id
+        self.confidence = confidence
+        super().__init__(
+            f"classification requires owner review (confidence={confidence:.2f})"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineResult:
     document: BronzeDocument
@@ -93,9 +106,7 @@ class RefineryPipeline:
         )
         semantic_route = classification.doc_class == "unknown" or classification.review_required
         if semantic_route and (self.semantic_extractor is None or self.semantic_validator is None):
-            raise ValueError(
-                f"classification requires owner review (confidence={classification.confidence:.2f})"
-            )
+            raise ClassificationReviewRequired(document.doc_id, classification.confidence)
         self.tasks.transition(document.doc_id, TaskStatus.CLASSIFIED)
 
         if semantic_route:
@@ -201,7 +212,7 @@ class RefineryPipeline:
         task = self.tasks.get(doc_id)
         if task.status is not TaskStatus.GATE_A_PENDING:
             raise ValueError(f"document is not awaiting Gate A: {task.status}")
-        current = self._review_rows(doc_id)
+        current = self.review_rows(doc_id)
         outcome = self.corrections.apply(
             extractions=current,
             requests=requests,
@@ -219,7 +230,7 @@ class RefineryPipeline:
         task = self.tasks.get(doc_id)
         if task.status is not TaskStatus.GATE_A_PENDING:
             raise ValueError(f"document is not awaiting Gate A: {task.status}")
-        reviewed = self._review_rows(doc_id)
+        reviewed = self.review_rows(doc_id)
         self.gate.decide(
             extractions=reviewed,
             decided_by=approved_by,
@@ -235,7 +246,7 @@ class RefineryPipeline:
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows
 
-    def _review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
+    def review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
         """Latest silver under review: the corrected stage if any, else validated."""
         try:
             return self.silver.read(doc_id, stage="reviewed")
