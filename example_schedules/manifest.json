@@ -1,0 +1,46 @@
+{
+  "retrieved_at": "2026-07-05",
+  "documents": [
+    {
+      "path": "Example1_ex99-k2i.pdf",
+      "title": "Amendment No. 10 to Credit Agreement - Exhibit G Investment Guidelines",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/826020/000199937125013586/ex99-k2i.htm",
+      "sha256": "218de12c4f71bdec46bd4e28145a0bdee7cea85b10179ae0b0de94f1e148c3e9",
+      "profile": "portfolio_guidelines",
+      "expected_minimum_eligibility_records": 6
+    },
+    {
+      "path": "Example2_acceptable-collateral-futures-options-select-forwards.pdf",
+      "title": "CME Acceptable Performance Bond Collateral",
+      "source_url": "https://www.cmegroup.com/clearing/financial-and-collateral-management/files/acceptable-collateral-futures-options-select-forwards.pdf",
+      "sha256": "175a0ec8c45af02ca948922c8b768822d398e6f6504b827910dda3a781608e0e",
+      "profile": "cme",
+      "expected_minimum_eligibility_records": 17
+    },
+    {
+      "path": "Example3_GSD-Haircut-Schedule-Current.pdf",
+      "title": "FICC GSD Schedule of Haircuts for Eligible Clearing Fund Securities",
+      "source_url": "https://www.dtcc.com/-/media/Files/Downloads/legal/risk-management/GSD-Haircut-Schedule-Current.pdf",
+      "sha256": "998bc7143d0495f0b2fe4335bb7d2cdbf9c6f4b3446b488d25794742ac014a36",
+      "profile": "ficc_gsd",
+      "expected_minimum_eligibility_records": 33
+    },
+    {
+      "path": "Example4_DTC-Haircut-Schedule.pdf",
+      "title": "DTC Schedule of Haircuts for Eligible Collateral Securities",
+      "source_url": "https://www.dtcc.com/-/media/Files/Downloads/legal/risk-management/DTC-Haircut-Schedule.pdf",
+      "sha256": "339589dceafc552933ed5bf2d76256d627725d133c77ebd4401d159709de5d6d",
+      "profile": "dtc",
+      "expected_minimum_eligibility_records": 90
+    },
+    {
+      "path": "Example5_EX-10.03.pdf",
+      "title": "JPMorgan Chase Bank and Cambridge Master Fund ISDA Agreement",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/1097396/000119312517254102/d425235dex1003.htm",
+      "sha256": "a9a51e9e77870bc93c89580242eb4de5b2c5558ecb7ff71c0a9e99b4c5534f3e",
+      "profile": "isda_vm",
+      "expected_minimum_eligibility_records": 6
+    }
+  ]
+}
+

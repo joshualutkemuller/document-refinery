@@ -55,6 +55,19 @@ and land gold:
 document-refinery approve DOC_ID --workspace .refinery --approved-by "Joshua"
 ```
 
+Run the five provenance-tracked public examples:
+
+```bash
+document-refinery watch example_schedules \
+  --workspace .refinery-public-examples \
+  --source public-example
+```
+
+The public corpus covers portfolio concentration guidelines, CME performance
+bond collateral, FICC and DTC haircut schedules, and an ISDA VM collateral
+table. Each document reaches Gate A with clause-level source locators; nothing is
+automatically approved.
+
 ## Repository map
 
 ```text
@@ -64,6 +77,7 @@ src/document_refinery/
   domain/       canonical value objects and invariants
   infrastructure/ local artifact, task, silver, and gold adapters
   quality/      golden-set metrics and release gates
+example_schedules/ provenance-tracked public PDF regression corpus
 sql/            Databricks/Delta DDL
 tests/          executable specification of locked decisions
 docs/adr/       architecture decisions
