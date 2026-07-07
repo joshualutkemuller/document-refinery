@@ -608,6 +608,16 @@ review time, no deterministic regression, and explicit owner release approval.
    tasks/audits remain local pending the same treatment.
 2. Add canonical `gold_csa_terms` fields for threshold, MTA, IA, rounding,
    eligible currencies, interest, dispute timing, custody, and reuse rights.
+   **Gate-S limits table delivered (engineering):** `gold_collateral_limits`
+   (`sql/005_collateral_limits.sql`, domain `GoldCollateralLimit`, and
+   `application/limit_promotion.py`) promotes validated `limit[i].*` silver rows
+   from `collateral_rule_schedule` into canonical bitemporal portfolio-limit
+   records — dimension, scoped value, absolute-or-percent value with basis and
+   aggregation, schedule identity, and silver lineage. Promotion guardrails
+   enforce percent∈[0,100], absolute⇒currency, and one document per record.
+   Landing behind Gate S; pending owner-verified golden cases and Gate S sign-off
+   before production, and not yet wired to the live approval flow (the
+   rule-schedule class is a 0.x template).
 3. Add schema migrations through Gate S and owner-verified CSA golden cases.
 4. Add operational access control, encryption, secrets management, monitoring,
    retries, and recovery procedures.
