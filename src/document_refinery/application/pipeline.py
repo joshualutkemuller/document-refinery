@@ -24,6 +24,7 @@ from document_refinery.application.corrections import (
     CorrectionRequest,
     CorrectionService,
 )
+from document_refinery.application.distiller import Distiller, DistillerReport
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
@@ -250,6 +251,16 @@ class RefineryPipeline:
     ) -> dict[str, LearnedCorrection]:
         """Learned corrections that apply to these rows (extraction_id -> lesson)."""
         return self.memory.suggestions_for(rows)
+
+    def distill(self, *, min_rule_occurrences: int = 2) -> DistillerReport:
+        """Replay the whole correction log into owner-reviewable distiller proposals.
+
+        Reads the durable correction log across every document and produces
+        constitution-rule and golden-case proposals (handoff §5.7). Purely
+        read-only: it proposes, the owner approves.
+        """
+        records = self.correction_log.read_all()
+        return Distiller(min_rule_occurrences=min_rule_occurrences).distill(records)
 
     def approve(self, doc_id: str, *, approved_by: str) -> tuple[GoldEligibilityTerm, ...]:
         task = self.tasks.get(doc_id)

@@ -216,6 +216,24 @@ document-refinery memory --workspace .refinery
 document-refinery memory --workspace .refinery --json
 ```
 
+Distill the correction log into owner-reviewable proposals (the learning loop,
+§5.7): repeated corrections become constitution-rule proposals, every
+owner-decided value becomes a golden-case proposal, and disputes are surfaced as
+unresolved. Nothing is applied — the owner batch-approves.
+
+```bash
+document-refinery distill --workspace .refinery
+```
+
+Proposals are written to `.refinery/distiller/proposals.{json,md}`. To emit the
+golden-case proposals as a ground-truth fragment you can review and merge into a
+corpus for regression:
+
+```bash
+document-refinery distill --workspace .refinery \
+  --ground-truth-out review/distilled_ground_truth.json
+```
+
 Run the packaged regression corpus:
 
 ```bash

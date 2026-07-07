@@ -147,6 +147,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark.add_argument("--json", action="store_true", dest="as_json")
 
+    distill = subcommands.add_parser(
+        "distill",
+        help="replay owner corrections into constitution-rule and golden-case proposals",
+    )
+    distill.add_argument("--workspace", type=Path, required=True)
+    distill.add_argument(
+        "--min-occurrences",
+        type=int,
+        default=2,
+        help="minimum repeated corrections before proposing a normalization rule",
+    )
+    distill.add_argument(
+        "--ground-truth-out",
+        type=Path,
+        help="write the golden-case proposals as a ground_truth.json fragment for a corpus",
+    )
+    distill.add_argument("--json", action="store_true", dest="as_json")
+
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
     watch.add_argument("--workspace", type=Path, required=True)
@@ -289,6 +307,8 @@ def main() -> int:
         return _run_accuracy(args)
     elif args.command == "benchmark":
         return _run_benchmark(args)
+    elif args.command == "distill":
+        return _run_distill(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -577,6 +597,37 @@ def _run_benchmark(args: argparse.Namespace) -> int:
                 print(f"        issues: {', '.join(result.issues)}")
         print(f"Benchmark results: {output}")
     return 0 if all(result.status == "passed" for result in results) else 1
+
+
+def _run_distill(args: argparse.Namespace) -> int:
+    pipeline = RefineryPipeline(args.workspace)
+    try:
+        report = pipeline.distill(min_rule_occurrences=args.min_occurrences)
+    finally:
+        pipeline.close()
+
+    output_dir = args.workspace / "distiller"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    proposals_json = output_dir / "proposals.json"
+    proposals_json.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
+    proposals_md = output_dir / "proposals.md"
+    proposals_md.write_text(report.to_markdown(), encoding="utf-8")
+    if args.ground_truth_out is not None:
+        args.ground_truth_out.parent.mkdir(parents=True, exist_ok=True)
+        args.ground_truth_out.write_text(
+            json.dumps(report.ground_truth_fragment(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    if args.as_json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return 0
+    print(report.to_markdown(), end="")
+    print(f"\nProposals: {proposals_json}")
+    print(f"Proposals (markdown): {proposals_md}")
+    if args.ground_truth_out is not None:
+        print(f"Ground-truth fragment: {args.ground_truth_out}")
+    return 0
 
 
 def _run_memory(args: argparse.Namespace) -> int:

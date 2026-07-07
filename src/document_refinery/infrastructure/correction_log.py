@@ -38,3 +38,19 @@ class CorrectionLog:
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         )
+
+    def read_all(self) -> tuple[CorrectionRecord, ...]:
+        """Every recorded action across all documents, in a deterministic order.
+
+        This is the durable substrate the distiller reads: no correction can
+        evaporate because the log is the single source of truth for what the
+        owner decided.
+        """
+        records: list[CorrectionRecord] = []
+        for path in sorted(self.root.glob("*.jsonl")):
+            records.extend(
+                CorrectionRecord.from_json(json.loads(line))
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        return tuple(records)
