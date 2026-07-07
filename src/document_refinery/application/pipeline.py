@@ -131,7 +131,7 @@ class RefineryPipeline:
             assert self.semantic_validator is not None
             semantic_extraction = self.semantic_extractor.extract(
                 doc_id=document.doc_id,
-                doc_class=EligibilityScheduleClassifier.DOC_CLASS,
+                doc_class=classification.doc_class,
                 text=text_artifact.text,
                 language=language,
             )

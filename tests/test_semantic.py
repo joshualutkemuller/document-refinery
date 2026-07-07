@@ -171,6 +171,38 @@ def test_semantic_extractor_rejects_model_controlled_system_fields() -> None:
         )
 
 
+def test_semantic_extractor_accepts_valuation_margin_schema() -> None:
+    clause = "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    payload = {
+        "extractions": [
+            {
+                "field_path": "valuation_margin[0].collateral_value_pct",
+                "raw_value": "99",
+                "normalized_value": "99",
+                "value_type": "percentage",
+                "unit": "percent_of_market_value",
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;table=securities;row=1",
+                "confidence": 0.88,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    result = _extractor(model).extract(
+        doc_id="doc-fed",
+        doc_class="collateral_valuation_margin_table",
+        text=clause,
+    )
+    assert result.rows[0].field_path == "valuation_margin[0].collateral_value_pct"
+    assert result.rows[0].unit == "percent_of_market_value"
+
+
 def test_semantic_validator_requires_separate_session() -> None:
     clause = "Eligible collateral includes government bonds."
     model = ScriptedModel(

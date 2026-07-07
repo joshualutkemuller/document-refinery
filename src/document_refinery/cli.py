@@ -39,6 +39,7 @@ from document_refinery.quality.accuracy import load_corpus, score_corpus
 from document_refinery.quality.dashboard import render_dashboard
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
+from document_refinery.semantic_schemas import schemas as semantic_schemas
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -596,14 +597,6 @@ def _build_semantic_components(
         raise ValueError(f"unsupported semantic provider: {provider}")
     if max_retries < 0:
         raise ValueError("semantic max retries must be non-negative")
-    schema_dictionary = (
-        "eligibility[].asset_criterion, eligible, haircut_pct, concentration_limit_pct, "
-        "concentration_basis, currency_scope, rating_floor, tenor_cap_days, valid_from, valid_to"
-    )
-    constitution = (
-        "Extract collateral eligibility schedule terms only. Preserve original-language "
-        "evidence, emit explicit not_found fields, and never emit system-controlled fields."
-    )
     extractor_model_name, validator_model_name, extractor_backend, validator_backend = (
         _build_semantic_backends(
             provider=provider,
@@ -616,17 +609,12 @@ def _build_semantic_components(
     )
     extractor = SemanticExtractor(
         extractor_backend,
-        constitution=constitution,
-        schema_dictionary=schema_dictionary,
-        schema_version=schema_version,
-        constitution_version=constitution_version,
         extractor_version=f"{provider}-{extractor_model_name}-{constitution_version}",
+        schemas=semantic_schemas(),
     )
     validator = SemanticValidator(
         validator_backend,
-        schema_dictionary=schema_dictionary,
-        schema_version=schema_version,
-        constitution_version=constitution_version,
+        schemas=semantic_schemas(),
     )
     return extractor, validator
 

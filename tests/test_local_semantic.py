@@ -14,6 +14,11 @@ FIXTURE = (
     / "example_schedules"
     / "Example6_synthetic-triparty-eligibility-profile.txt"
 )
+FED_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "example_schedules"
+    / "fed-discount-window-collateral-valuation.pdf"
+)
 
 
 def _components():
@@ -118,3 +123,28 @@ def test_local_provider_rejects_unrecognizable_text() -> None:
             doc_class="collateral_eligibility_schedule",
             text="This document has no schedule structure at all.",
         )
+
+
+def test_fed_margin_pdf_routes_to_gate_a_with_local_provider(tmp_path: Path) -> None:
+    pytest.importorskip("pypdf")
+    extractor, validator = _components()
+    pipeline = RefineryPipeline(
+        tmp_path / "ws-fed",
+        semantic_extractor=extractor,
+        semantic_validator=validator,
+    )
+    try:
+        result = pipeline.run(FED_FIXTURE, source="public-example")
+        assert result.silver_rows
+        assert result.silver_rows[0].doc_class == "collateral_valuation_margin_table"
+        assert any(
+            row.field_path.endswith(".collateral_value_pct")
+            for row in result.silver_rows
+        )
+        assert all(
+            row.validator_status is ValidatorStatus.CONFIRMED
+            for row in result.silver_rows
+        )
+        assert pipeline.tasks.get(result.document.doc_id).status is TaskStatus.GATE_A_PENDING
+    finally:
+        pipeline.close()

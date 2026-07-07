@@ -113,6 +113,8 @@ class LocalHeuristicSemanticModel:
 
 
 def _extraction_rows(text: str) -> list[dict[str, object]]:
+    if _is_valuation_margin_text(text):
+        return _valuation_margin_rows(text)
     lines = text.splitlines()
     header = _header_fields(lines)
     rows: list[dict[str, object]] = []
@@ -123,6 +125,139 @@ def _extraction_rows(text: str) -> list[dict[str, object]]:
             continue
         rows.extend(_asset_rows(asset_index, line, lineno, kv, header))
         asset_index += 1
+    return rows
+
+
+def _is_valuation_margin_text(text: str) -> bool:
+    lowered = text.casefold()
+    return (
+        "collateral valuation" in lowered
+        and "securities valuation and margins table" in lowered
+    )
+
+
+def _valuation_margin_rows(text: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    line_pairs = [
+        (line.strip(), _collapse_whitespace(line))
+        for line in text.splitlines()
+        if line.strip()
+    ]
+    last_updated = _line_containing(line_pairs, "Last Updated:")
+    if last_updated:
+        normalized_date = _date_from_mdy(last_updated)
+        rows.append(
+            _row(
+                "document.last_updated",
+                last_updated.split(":", 1)[-1].strip(),
+                normalized_date or last_updated.split(":", 1)[-1].strip(),
+                ValueType.DATE if normalized_date else ValueType.STRING,
+                last_updated,
+                "document=header",
+            )
+        )
+    publisher_clause = _line_containing(line_pairs, "Federal Reserve Bank")
+    if publisher_clause:
+        rows.append(
+            _row(
+                "document.publisher",
+                "Federal Reserve Bank",
+                "Federal Reserve",
+                ValueType.STRING,
+                publisher_clause,
+                "document=header",
+            )
+        )
+    context_clause = _line_containing(line_pairs, "discount window programs")
+    if context_clause:
+        rows.append(
+            _row(
+                "document.program_context",
+                "discount window programs",
+                "Discount Window lending and Payment System Risk",
+                ValueType.STRING,
+                context_clause,
+                "document=header",
+            )
+        )
+
+    duration_buckets = (("0-1", "0", "1"), (">1-3", "1", "3"), (">3-5", "3", "5"),
+                        (">5-10", "5", "10"), (">10", "10", ""))
+    row_index = 0
+    for original_line, collapsed_line in line_pairs:
+        values = re.findall(r"\b\d{2,3}\b", collapsed_line)
+        if len(values) < 5:
+            continue
+        label = re.sub(r"(?:\s+\d{2,3}){5}\s*$", "", collapsed_line)
+        label = label.strip()
+        if not label or label.casefold().startswith(("duration buckets", "securities margins")):
+            continue
+        for bucket_index, (bucket, min_years, max_years) in enumerate(duration_buckets):
+            collateral_value = values[-5:][bucket_index]
+            prefix = f"valuation_margin[{row_index}]"
+            implied_haircut = str(100 - int(collateral_value))
+            rows.extend(
+                (
+                    _row(
+                        f"{prefix}.asset_category",
+                        label,
+                        label,
+                        ValueType.STRING,
+                        original_line,
+                        f"line={row_index + 1}",
+                    ),
+                    _row(
+                        f"{prefix}.duration_bucket",
+                        bucket,
+                        bucket,
+                        ValueType.STRING,
+                        original_line,
+                        f"line={row_index + 1}",
+                    ),
+                    _row(
+                        f"{prefix}.duration_min_years",
+                        min_years,
+                        min_years,
+                        ValueType.INTEGER,
+                        original_line,
+                        f"line={row_index + 1}",
+                    ),
+                    _row(
+                        f"{prefix}.collateral_value_pct",
+                        collateral_value,
+                        collateral_value,
+                        ValueType.PERCENTAGE,
+                        original_line,
+                        f"line={row_index + 1}",
+                        unit="percent_of_market_value",
+                    ),
+                    _row(
+                        f"{prefix}.implied_haircut_pct",
+                        implied_haircut,
+                        implied_haircut,
+                        ValueType.PERCENTAGE,
+                        original_line,
+                        f"line={row_index + 1}",
+                        unit="percent",
+                    ),
+                )
+            )
+            if max_years:
+                rows.append(
+                    _row(
+                        f"{prefix}.duration_max_years",
+                        max_years,
+                        max_years,
+                        ValueType.INTEGER,
+                        original_line,
+                        f"line={row_index + 1}",
+                    )
+                )
+            row_index += 1
+        if row_index >= 20:
+            break
+    if not rows:
+        raise ValueError("local heuristic found no recognizable valuation margin table")
     return rows
 
 
@@ -268,6 +403,26 @@ def _slug(value: str) -> str:
 def _iso_date(value: str) -> str:
     match = re.search(r"\d{4}-\d{2}-\d{2}", value)
     return match.group(0) if match else ""
+
+
+def _date_from_mdy(value: str) -> str:
+    match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", value)
+    if not match:
+        return ""
+    month, day, year = match.groups()
+    return f"{year}-{int(month):02d}-{int(day):02d}"
+
+
+def _line_containing(lines: list[tuple[str, str]], needle: str) -> str:
+    normalized_needle = needle.casefold()
+    for original, collapsed in lines:
+        if normalized_needle in collapsed.casefold():
+            return original
+    return ""
+
+
+def _collapse_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _first_line(text: str) -> str:

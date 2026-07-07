@@ -17,8 +17,19 @@ class Classification:
 
 class EligibilityScheduleClassifier:
     DOC_CLASS = "collateral_eligibility_schedule"
+    VALUATION_DOC_CLASS = "collateral_valuation_margin_table"
 
     def classify(self, text: str, *, hint: str | None = None) -> Classification:
+        valuation_profile = _valuation_profile(text)
+        if valuation_profile:
+            return Classification(
+                doc_class=self.VALUATION_DOC_CLASS,
+                confidence=0.85,
+                counterparty=None,
+                agreement_id=None,
+                review_required=True,
+                profile=valuation_profile,
+            )
         public_profile = _public_profile(text)
         if public_profile:
             return Classification(
@@ -115,4 +126,18 @@ def _public_profile(text: str) -> str | None:
     for profile, required in signatures:
         if all(value in lowered for value in required):
             return profile
+    return None
+
+
+def _valuation_profile(text: str) -> str | None:
+    lowered = text.casefold()
+    if all(
+        phrase in lowered
+        for phrase in (
+            "collateral valuation",
+            "securities valuation and margins table",
+            "loan valuation and margins tables",
+        )
+    ):
+        return "fed_collateral_valuation"
     return None
