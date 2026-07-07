@@ -23,15 +23,97 @@ from document_refinery.agents.eligibility import (
     EligibilityAdversarialValidator,
     EligibilityScheduleExtractor,
 )
-from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
+from document_refinery.agents.semantic import (
+    SemanticCallRecord,
+    SemanticExtractor,
+    SemanticValidator,
+)
 from document_refinery.domain.models import SilverExtraction
 
 DEFAULT_DOC_CLASS = "collateral_eligibility_schedule"
 
-# A row provider turns one golden case into the silver rows to be scored, so the
-# scoring math is identical whether rows come from the deterministic eligibility
-# route or the semantic route.
-RowProvider = Callable[["GoldenCase"], "tuple[SilverExtraction, ...]"]
+
+@dataclass(frozen=True, slots=True)
+class ScoredRun:
+    """One case's scored rows plus any semantic call records behind them.
+
+    The deterministic route returns no calls; the semantic route returns the
+    extractor (and any chunk) calls plus the validator call, which carry the
+    latency and token metadata folded into the report's performance section.
+    """
+
+    rows: tuple[SilverExtraction, ...]
+    calls: tuple[SemanticCallRecord, ...] = ()
+
+
+# A row provider turns one golden case into its scored rows, so the scoring math
+# is identical whether rows come from the deterministic or the semantic route.
+RowProvider = Callable[["GoldenCase"], ScoredRun]
+
+
+@dataclass(frozen=True, slots=True)
+class TokenCostModel:
+    """Owner-supplied token pricing. No prices are hardcoded — provider/model
+    rates change and are the owner's to set."""
+
+    input_per_1k: float = 0.0
+    output_per_1k: float = 0.0
+
+    def cost(self, input_tokens: int, output_tokens: int) -> float:
+        return input_tokens / 1000 * self.input_per_1k + output_tokens / 1000 * self.output_per_1k
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceReport:
+    semantic_call_count: int = 0
+    total_latency_ms: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
+
+    def mean_latency_ms_per_document(self, document_count: int) -> float:
+        return self.total_latency_ms / document_count if document_count else 0.0
+
+    def to_dict(self, document_count: int) -> dict[str, object]:
+        return {
+            "semantic_call_count": self.semantic_call_count,
+            "total_latency_ms": self.total_latency_ms,
+            "mean_latency_ms_per_document": round(
+                self.mean_latency_ms_per_document(document_count), 1
+            ),
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_tokens,
+            "estimated_cost_usd": (
+                None
+                if self.estimated_cost_usd is None
+                else round(self.estimated_cost_usd, 6)
+            ),
+        }
+
+
+def _performance(
+    calls: tuple[SemanticCallRecord, ...], cost_model: TokenCostModel | None
+) -> PerformanceReport:
+    input_tokens = sum(call.input_tokens or 0 for call in calls)
+    output_tokens = sum(call.output_tokens or 0 for call in calls)
+    total_tokens = sum(
+        call.total_tokens
+        if call.total_tokens is not None
+        else (call.input_tokens or 0) + (call.output_tokens or 0)
+        for call in calls
+    )
+    return PerformanceReport(
+        semantic_call_count=len(calls),
+        total_latency_ms=sum(call.latency_ms or 0 for call in calls),
+        total_input_tokens=input_tokens,
+        total_output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        estimated_cost_usd=(
+            None if cost_model is None else cost_model.cost(input_tokens, output_tokens)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +147,7 @@ class AccuracyReport:
     per_field: dict[str, tuple[int, int]] = field(default_factory=dict)
     per_document: dict[str, tuple[int, int]] = field(default_factory=dict)
     mismatches: tuple[Mismatch, ...] = ()
+    performance: PerformanceReport = field(default_factory=PerformanceReport)
 
     @property
     def field_accuracy(self) -> float:
@@ -113,6 +196,7 @@ class AccuracyReport:
                 for m in self.mismatches
             ],
             "release_ready": self.release_ready(),
+            "performance": self.performance.to_dict(self.document_count),
         }
 
 
@@ -121,10 +205,12 @@ def deterministic_row_provider() -> RowProvider:
     extractor = EligibilityScheduleExtractor()
     validator = EligibilityAdversarialValidator()
 
-    def provide(case: GoldenCase) -> tuple[SilverExtraction, ...]:
-        return validator.validate(
-            text=case.text,
-            extractions=extractor.extract(doc_id=case.case_id, text=case.text),
+    def provide(case: GoldenCase) -> ScoredRun:
+        return ScoredRun(
+            rows=validator.validate(
+                text=case.text,
+                extractions=extractor.extract(doc_id=case.case_id, text=case.text),
+            )
         )
 
     return provide
@@ -140,7 +226,7 @@ def semantic_row_provider(
     configured extractor and an independent validator (same split as production).
     """
 
-    def provide(case: GoldenCase) -> tuple[SilverExtraction, ...]:
+    def provide(case: GoldenCase) -> ScoredRun:
         extraction = extractor.extract(
             doc_id=case.case_id,
             doc_class=case.doc_class,
@@ -154,13 +240,19 @@ def semantic_row_provider(
             extractor_session_id=extractor.model.session_id,
             language=language,
         )
-        return validation.rows
+        return ScoredRun(
+            rows=validation.rows,
+            calls=(*extraction.calls, validation.call),
+        )
 
     return provide
 
 
 def score_corpus(
-    cases: tuple[GoldenCase, ...], *, row_provider: RowProvider | None = None
+    cases: tuple[GoldenCase, ...],
+    *,
+    row_provider: RowProvider | None = None,
+    cost_model: TokenCostModel | None = None,
 ) -> AccuracyReport:
     provide = row_provider or deterministic_row_provider()
 
@@ -169,11 +261,14 @@ def score_corpus(
     per_document: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     mismatches: list[Mismatch] = []
     verified_docs: set[str] = set()
+    calls: list[SemanticCallRecord] = []
 
     for case in cases:
         if case.owner_verified:
             verified_docs.add(case.case_id)
-        rows = provide(case)
+        run = provide(case)
+        calls.extend(run.calls)
+        rows = run.rows
         actual = {row.field_path: row.normalized_value for row in rows}
         located = {
             row.field_path
@@ -216,6 +311,7 @@ def score_corpus(
         per_field={k: (v[0], v[1]) for k, v in per_field.items()},
         per_document={k: (v[0], v[1]) for k, v in per_document.items()},
         mismatches=tuple(mismatches),
+        performance=_performance(tuple(calls), cost_model),
     )
 
 

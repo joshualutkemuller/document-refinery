@@ -48,6 +48,7 @@ from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.accuracy import (
+    TokenCostModel,
     load_corpus,
     score_corpus,
     semantic_row_provider,
@@ -133,6 +134,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--language",
         default="und",
         help="language tag passed to the semantic route when --semantic-provider is set",
+    )
+    accuracy.add_argument(
+        "--cost-per-1k-input",
+        type=float,
+        help="USD per 1k input tokens; folds an estimated semantic cost into the report",
+    )
+    accuracy.add_argument(
+        "--cost-per-1k-output",
+        type=float,
+        help="USD per 1k output tokens (pairs with --cost-per-1k-input)",
     )
     _add_semantic_options(accuracy)
 
@@ -570,7 +581,15 @@ def _run_accuracy(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         row_provider = semantic_row_provider(extractor, validator, language=args.language)
-    report = score_corpus(load_corpus(args.corpus), row_provider=row_provider)
+    cost_model = None
+    if args.cost_per_1k_input is not None or args.cost_per_1k_output is not None:
+        cost_model = TokenCostModel(
+            input_per_1k=args.cost_per_1k_input or 0.0,
+            output_per_1k=args.cost_per_1k_output or 0.0,
+        )
+    report = score_corpus(
+        load_corpus(args.corpus), row_provider=row_provider, cost_model=cost_model
+    )
     if args.as_json:
         print(json.dumps(report.to_dict(), indent=2))
         return 0
@@ -583,6 +602,20 @@ def _run_accuracy(args: argparse.Namespace) -> int:
     print(f"Found-value accuracy: {report.found_accuracy:.2%}")
     print(f"Locator coverage:     {report.locator_coverage:.2%}")
     print(f"Disputes:             {report.dispute_count}")
+    perf = report.performance
+    if perf.semantic_call_count:
+        print("Semantic performance:")
+        print(
+            f"  Latency: {perf.total_latency_ms} ms total, "
+            f"{perf.mean_latency_ms_per_document(report.document_count):.0f} ms/doc "
+            f"across {perf.semantic_call_count} calls"
+        )
+        print(
+            f"  Tokens:  {perf.total_input_tokens} in / {perf.total_output_tokens} out "
+            f"({perf.total_tokens} total)"
+        )
+        if perf.estimated_cost_usd is not None:
+            print(f"  Est. cost: ${perf.estimated_cost_usd:.4f}")
     weakest = sorted(
         ((c / t if t else 0.0, name) for name, (c, t) in report.per_field.items())
     )[:5]

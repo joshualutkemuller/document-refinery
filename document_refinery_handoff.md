@@ -563,7 +563,10 @@ still requires owner-verified examples and review-time evidence.
    **deterministic** eligibility route by default and the **semantic route** with
    `--semantic-provider` (routing each case by its ground-truth `doc_class`), so
    semantic-only classes such as `collateral_rule_schedule` are scorable against
-   a real model. **Intake + review-time harness delivered:**
+   a real model. The report folds in semantic **latency** and **token usage** per
+   run, plus an estimated **cost** when the owner supplies `--cost-per-1k-input`/
+   `--cost-per-1k-output` rates (no prices are hardcoded). **Intake + review-time
+   harness delivered:**
    `document-refinery corpus-check` validates an owner corpus (ground-truth ↔
    document consistency, owner-verified counts, release blockers) before scoring,
    and `document-refinery review-time` reports measured owner review time against
