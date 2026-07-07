@@ -46,7 +46,10 @@ from document_refinery.infrastructure.layout_benchmark import (
 )
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
-from document_refinery.infrastructure.records import GoldLimitStore
+from document_refinery.infrastructure.records import (
+    GoldLimitStore,
+    GoldMarginRequirementStore,
+)
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.accuracy import (
@@ -119,6 +122,15 @@ def build_parser() -> argparse.ArgumentParser:
             "also promote validated limit[i] rows to gold_collateral_limits "
             "(behind Gate S; for collateral_rule_schedule documents). Writes "
             "<workspace>/gold/collateral_limits.jsonl"
+        ),
+    )
+    approve.add_argument(
+        "--land-margin",
+        action="store_true",
+        help=(
+            "also promote validated requirement[i] rows to gold_margin_requirements "
+            "(behind Gate S; for margin_requirement documents). Writes "
+            "<workspace>/gold/margin_requirements.jsonl"
         ),
     )
     _add_storage_options(approve)
@@ -371,10 +383,16 @@ def main() -> int:
             limit_store = GoldLimitStore(
                 args.workspace / "gold" / "collateral_limits.jsonl"
             )
+        margin_store = None
+        if args.land_margin:
+            margin_store = GoldMarginRequirementStore(
+                args.workspace / "gold" / "margin_requirements.jsonl"
+            )
         pipeline = RefineryPipeline(
             args.workspace,
             gold_store=_build_gold_store(args.gold_store, args.gold_uri, args.workspace),
             limit_store=limit_store,
+            margin_store=margin_store,
         )
         try:
             try:
@@ -397,6 +415,7 @@ def main() -> int:
                         "task_status": "gold_landed",
                         "gold_records": len(gold_rows),
                         "limit_records": len(pipeline.last_landed_limits),
+                        "margin_records": len(pipeline.last_landed_margin),
                     }
                 )
             )

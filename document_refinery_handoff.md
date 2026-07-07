@@ -644,13 +644,22 @@ Follow-ups from the `collateral_rule_schedule` limit work, in order:
    use, and Delta landing for limits is not yet added (JSONL only).
 3. **The optimizer join. Delivered (preview):**
    `platinum/constraint_set.py` — `build_constraint_sets()` joins
-   `gold_eligibility_terms` + `gold_collateral_limits` into per-`(counterparty,
-   agreement)` `CollateralConstraintSet`s (schedule-wide limits attach to every
-   set; `active_only` keeps the current bitemporal version), with a reserved slot
-   for `gold_margin_requirement` demand once that gold table exists. Read-only,
-   no storage, not wired into production — a Phase-2/3 platinum feature-view
-   preview that still waits on the N1–N5 gates and the Reconciler before it drives
-   anything.
+   `gold_eligibility_terms` + `gold_collateral_limits` + `gold_margin_requirements`
+   into per-`(counterparty, agreement)` `CollateralConstraintSet`s (schedule-wide
+   limits attach to every set; margin demand joins by counterparty/agreement;
+   `active_only` keeps the current bitemporal version). Read-only, no storage, not
+   wired into production — a Phase-2/3 platinum feature-view preview that still
+   waits on the N1–N5 gates and the Reconciler before it drives anything.
+
+**Non-gated engineering delivered on top of the above:**
+
+- **Margin-requirement gold.** `gold_margin_requirements`
+  (`sql/006_margin_requirements.sql`, domain `GoldMarginRequirement`,
+  `application/margin_promotion.py`, JSONL `GoldMarginRequirementStore` with
+  bitemporal `InMemoryMarginHistory`) promotes validated `requirement[i].*` silver
+  rows from the `margin_requirement` schema — the demand side. Wired opt-in into
+  approval (`RefineryPipeline.margin_store`, `approve --land-margin`) exactly like
+  limits, and into the constraint-set join above. Behind Gate S; off by default.
 
 ### Then proceed to Phase 2
 

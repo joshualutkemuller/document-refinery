@@ -9,6 +9,7 @@ from datetime import date, datetime
 from document_refinery.domain.models import (
     GoldCollateralLimit,
     GoldEligibilityTerm,
+    GoldMarginRequirement,
     MarginType,
     SilverExtraction,
     ValidatorStatus,
@@ -183,6 +184,37 @@ class InMemoryLimitHistory:
         )
 
     def upsert(self, record: GoldCollateralLimit) -> None:
+        for index, current in enumerate(self._records):
+            if self._key(current) == self._key(record) and current.knowledge_to is None:
+                if record.knowledge_from <= current.knowledge_from:
+                    raise PromotionError(
+                        "new knowledge version must be later than the active version"
+                    )
+                self._records[index] = replace(current, knowledge_to=record.knowledge_from)
+        self._records.append(record)
+
+
+class InMemoryMarginHistory:
+    """Knowledge-time version closure for gold margin requirements."""
+
+    def __init__(self) -> None:
+        self._records: list[GoldMarginRequirement] = []
+
+    @property
+    def records(self) -> tuple[GoldMarginRequirement, ...]:
+        return tuple(self._records)
+
+    @staticmethod
+    def _key(record: GoldMarginRequirement) -> tuple[object, ...]:
+        return (
+            record.counterparty,
+            record.agreement_id,
+            record.netting_set_id,
+            record.margin_type,
+            record.valuation_date,
+        )
+
+    def upsert(self, record: GoldMarginRequirement) -> None:
         for index, current in enumerate(self._records):
             if self._key(current) == self._key(record) and current.knowledge_to is None:
                 if record.knowledge_from <= current.knowledge_from:
