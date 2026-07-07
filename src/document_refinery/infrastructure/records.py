@@ -9,9 +9,14 @@ from enum import Enum
 from pathlib import Path
 from typing import cast
 
-from document_refinery.application.promotion import InMemoryBitemporalHistory
+from document_refinery.application.promotion import (
+    InMemoryBitemporalHistory,
+    InMemoryLimitHistory,
+)
 from document_refinery.domain.models import (
+    GoldCollateralLimit,
     GoldEligibilityTerm,
+    LimitUnit,
     MarginType,
     SilverExtraction,
     ValidatorStatus,
@@ -62,6 +67,44 @@ class GoldStore:
         )
         self.path.write_text(content + "\n", encoding="utf-8")
         return self.path
+
+
+class GoldLimitStore:
+    """JSONL gold store for collateral portfolio limits (parallel to GoldStore)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.history = InMemoryLimitHistory()
+        if self.path.exists():
+            for line in self.path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    self.history.upsert(_limit_from_json(json.loads(line)))
+
+    def upsert(self, records: tuple[GoldCollateralLimit, ...]) -> Path:
+        for record in records:
+            self.history.upsert(record)
+        content = "\n".join(
+            json.dumps(_json_safe(asdict(record)), sort_keys=True)
+            for record in self.history.records
+        )
+        self.path.write_text(content + "\n", encoding="utf-8")
+        return self.path
+
+
+def _limit_from_json(payload: dict[str, object]) -> GoldCollateralLimit:
+    payload["limit_unit"] = LimitUnit(str(payload["limit_unit"]))
+    payload["silver_extraction_ids"] = tuple(
+        cast(list[str], payload["silver_extraction_ids"])
+    )
+    for date_field in ("valid_from", "valid_to"):
+        if payload.get(date_field):
+            payload[date_field] = date.fromisoformat(str(payload[date_field]))
+    if payload.get("knowledge_from"):
+        payload["knowledge_from"] = datetime.fromisoformat(str(payload["knowledge_from"]))
+    if payload.get("knowledge_to"):
+        payload["knowledge_to"] = datetime.fromisoformat(str(payload["knowledge_to"]))
+    return GoldCollateralLimit(**payload)  # type: ignore[arg-type]
 
 
 def _json_safe(value: object) -> object:

@@ -26,8 +26,14 @@ from document_refinery.application.corrections import (
 )
 from document_refinery.application.distiller import Distiller, DistillerReport
 from document_refinery.application.gates import GateADecision, GateAService
+from document_refinery.application.limit_consistency import LimitConsistencyValidator
+from document_refinery.application.limit_promotion import LimitPromotion
 from document_refinery.application.promotion import EligibilityPromotion
-from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
+from document_refinery.domain.models import (
+    GoldCollateralLimit,
+    GoldEligibilityTerm,
+    SilverExtraction,
+)
 from document_refinery.infrastructure.artifacts import ArtifactStore, BronzeDocument
 from document_refinery.infrastructure.correction_log import CorrectionLog
 from document_refinery.infrastructure.layout import (
@@ -76,6 +82,12 @@ class GoldRepository(Protocol):
     def upsert(self, records: tuple[GoldEligibilityTerm, ...]) -> object: ...
 
 
+class LimitRepository(Protocol):
+    """Storage seam for landing gold collateral limits."""
+
+    def upsert(self, records: tuple[GoldCollateralLimit, ...]) -> object: ...
+
+
 class RefineryPipeline:
     def __init__(
         self,
@@ -85,6 +97,7 @@ class RefineryPipeline:
         semantic_validator: SemanticValidator | None = None,
         layout_adapter: LayoutAdapter | None = None,
         gold_store: GoldRepository | None = None,
+        limit_store: LimitRepository | None = None,
     ) -> None:
         if (semantic_extractor is None) != (semantic_validator is None):
             raise ValueError("semantic extractor and validator must be configured together")
@@ -114,6 +127,11 @@ class RefineryPipeline:
         )
         self.memory = self.memory_store.load()
         self.promotion = EligibilityPromotion()
+        # Opt-in collateral-limit landing (Gate S); off unless a limit_store is set.
+        self.limit_store = limit_store
+        self.limit_promotion = LimitPromotion()
+        self.limit_consistency = LimitConsistencyValidator()
+        self.last_landed_limits: tuple[GoldCollateralLimit, ...] = ()
 
     def run(
         self,
@@ -299,16 +317,35 @@ class RefineryPipeline:
             approved=True,
             note="Approved after review of the generated Gate A packet.",
         )
-        # Promote before transitioning: a PromotionError then leaves the task at
-        # gate_a_pending (recoverable via corrections), not stuck in approved.
+        # Promote before transitioning: a PromotionError (or limit inconsistency)
+        # then leaves the task at gate_a_pending (recoverable via corrections),
+        # not stuck in approved.
+        knowledge_from = datetime.now(UTC)
         gold_rows = tuple(
-            self.promotion.promote(group, knowledge_from=datetime.now(UTC))
+            self.promotion.promote(group, knowledge_from=knowledge_from)
             for group in _group_eligibility_rows(reviewed)
         )
+        limit_rows = self._promote_limits(reviewed, knowledge_from=knowledge_from)
         self.tasks.transition(doc_id, TaskStatus.GATE_A_APPROVED)
         self.gold.upsert(gold_rows)
+        if self.limit_store is not None and limit_rows:
+            self.limit_store.upsert(limit_rows)
+        self.last_landed_limits = limit_rows
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows
+
+    def _promote_limits(
+        self, reviewed: tuple[SilverExtraction, ...], *, knowledge_from: datetime
+    ) -> tuple[GoldCollateralLimit, ...]:
+        """Opt-in: validate + promote limit[i] rows when a limit_store is configured.
+
+        Runs the deterministic consistency rules first so a contradictory limit
+        fails closed and keeps the document recoverable at Gate A.
+        """
+        if self.limit_store is None or not _has_limit_rows(reviewed):
+            return ()
+        self.limit_consistency.assert_consistent(reviewed)
+        return self.limit_promotion.promote(reviewed, knowledge_from=knowledge_from)
 
     def review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
         """Latest silver under review: the corrected stage if any, else validated."""
@@ -319,6 +356,10 @@ class RefineryPipeline:
 
     def close(self) -> None:
         self.tasks.close()
+
+
+def _has_limit_rows(rows: tuple[SilverExtraction, ...]) -> bool:
+    return any(re.match(r"limit\[\d+]\.", row.field_path) for row in rows)
 
 
 def _group_eligibility_rows(
