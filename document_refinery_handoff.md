@@ -573,6 +573,9 @@ still requires owner-verified examples and review-time evidence.
    the ≤15-minute exit target from durable per-review timing captured by the
    `review` command. A `collateral_rule_schedule` intake scaffold ships in
    `examples/collateral_rule_corpus/` (owner-verified false, gate blocked).
+   **Remaining (deferred):** metrics are reported per corpus run but not yet
+   sliced **by model version** within a single report; add this when comparing
+   models (it only matters for model-vs-model release decisions under Gate M).
 4. Feed every correction into a golden case or constitution rule. **Delivered:**
    `document-refinery distill` turns the correction log into constitution-rule
    proposals (repeated corrections) and golden-case proposals (every
