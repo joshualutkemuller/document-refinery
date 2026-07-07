@@ -61,6 +61,31 @@ def test_collateral_rule_schedule_schema_is_registered() -> None:
     assert spec.doc_class in {s.doc_class for s in semantic_schemas()}
 
 
+def test_ccp_and_margin_sibling_schemas_are_registered() -> None:
+    from document_refinery.semantic_schemas import get_schema
+
+    # CCP/clearing enhancement folded into the rule-schedule fallback.
+    rule = get_schema("collateral_rule_schedule")
+    for field in ("clearing_house", "country_limit_pct", "currency_limit_pct", "account_scope"):
+        assert field in rule.field_suffixes
+    # General portfolio-limit sub-model (sector/credit-quality/asset-type, abs or pct).
+    for field in ("dimension", "scope_value", "limit_value", "limit_unit", "basis", "aggregation"):
+        assert field in rule.field_suffixes
+
+    requirement = get_schema("margin_requirement")
+    assert requirement.doc_class == "margin_requirement"
+    assert {"required_amount", "netting_set_id", "risk_class"} <= requirement.field_suffixes
+
+    operations = get_schema("collateral_margin_operation")
+    assert operations.doc_class == "collateral_margin_operation"
+    assert {"settlement_status", "substitution_status", "dispute_status"} <= (
+        operations.field_suffixes
+    )
+
+    registered = {s.doc_class for s in semantic_schemas()}
+    assert {"margin_requirement", "collateral_margin_operation"} <= registered
+
+
 class ScriptedModel:
     def __init__(
         self,
@@ -254,6 +279,196 @@ def test_semantic_extractor_accepts_collateral_rule_schedule_schema() -> None:
     )
     assert result.rows[0].field_path == "rule[0].fx_haircut_pct"
     assert result.rows[0].doc_class == "collateral_rule_schedule"
+
+
+def _single_field_payload(field_path: str, clause: str, normalized: str) -> str:
+    return json.dumps(
+        {
+            "extractions": [
+                {
+                    "field_path": field_path,
+                    "raw_value": normalized,
+                    "normalized_value": normalized,
+                    "value_type": "string",
+                    "unit": None,
+                    "currency": None,
+                    "source_clause": clause,
+                    "source_locator": "page=1;row=1",
+                    "confidence": 0.9,
+                    "ambiguity_flag": False,
+                    "ambiguity_note": None,
+                }
+            ]
+        }
+    )
+
+
+def test_collateral_rule_schedule_accepts_ccp_and_limit_fields() -> None:
+    clause = "German Bunds: country limit 20%, cleared at LCH."
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: _single_field_payload("rule[0].country_limit_pct", clause, "20"),
+    )
+    result = _extractor(model).extract(
+        doc_id="doc-lch",
+        doc_class="collateral_rule_schedule",
+        text=clause,
+    )
+    assert result.rows[0].field_path == "rule[0].country_limit_pct"
+
+
+def test_collateral_rule_schedule_accepts_scoped_percent_limit() -> None:
+    clause = "Technology sector no more than 10% of posted collateral (post-haircut value)."
+    payload = {
+        "extractions": [
+            {
+                "field_path": "limit[0].dimension",
+                "raw_value": "Technology sector",
+                "normalized_value": "sector",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+            {
+                "field_path": "limit[0].scope_value",
+                "raw_value": "Technology",
+                "normalized_value": "Technology",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+            {
+                "field_path": "limit[0].limit_value",
+                "raw_value": "10%",
+                "normalized_value": "10",
+                "value_type": "percentage",
+                "unit": "percent",
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+            {
+                "field_path": "limit[0].basis",
+                "raw_value": "post-haircut value",
+                "normalized_value": "post_haircut_value",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    rows = _extractor(model).extract(
+        doc_id="doc-limit",
+        doc_class="collateral_rule_schedule",
+        text=clause,
+    ).rows
+    by_path = {row.field_path: row.normalized_value for row in rows}
+    assert by_path["limit[0].dimension"] == "sector"
+    assert by_path["limit[0].scope_value"] == "Technology"
+    assert by_path["limit[0].limit_value"] == "10"
+    assert by_path["limit[0].basis"] == "post_haircut_value"
+
+
+def test_collateral_rule_schedule_accepts_absolute_currency_limit() -> None:
+    clause = "No more than USD 50,000,000 in single-issuer corporate bonds by market value."
+    payload = {
+        "extractions": [
+            {
+                "field_path": "limit[0].limit_value",
+                "raw_value": "USD 50,000,000",
+                "normalized_value": "50000000",
+                "value_type": "integer",
+                "unit": None,
+                "currency": "USD",
+                "source_clause": clause,
+                "source_locator": "page=1;row=2",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+            {
+                "field_path": "limit[0].limit_unit",
+                "raw_value": "absolute",
+                "normalized_value": "absolute",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=2",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            },
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    rows = _extractor(model).extract(
+        doc_id="doc-abs-limit",
+        doc_class="collateral_rule_schedule",
+        text=clause,
+    ).rows
+    by_path = {row.field_path: row for row in rows}
+    assert by_path["limit[0].limit_value"].normalized_value == "50000000"
+    assert by_path["limit[0].limit_value"].currency == "USD"
+    assert by_path["limit[0].limit_unit"].normalized_value == "absolute"
+
+
+def test_margin_requirement_schema_accepts_required_amount() -> None:
+    clause = "Initial Margin Requirement: $24,500,000 USD for Bank A."
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: _single_field_payload(
+            "requirement[0].required_amount", clause, "24500000"
+        ),
+    )
+    result = _extractor(model).extract(
+        doc_id="doc-simm",
+        doc_class="margin_requirement",
+        text=clause,
+    )
+    assert result.rows[0].field_path == "requirement[0].required_amount"
+    assert result.rows[0].doc_class == "margin_requirement"
+
+
+def test_margin_operations_schema_accepts_settlement_status() -> None:
+    clause = "Margin call to Goldman Sachs for $12,500,000; settlement status Pending."
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: _single_field_payload(
+            "call[0].settlement_status", clause, "Pending"
+        ),
+    )
+    result = _extractor(model).extract(
+        doc_id="doc-acadia",
+        doc_class="collateral_margin_operation",
+        text=clause,
+    )
+    assert result.rows[0].field_path == "call[0].settlement_status"
 
 
 def test_collateral_rule_schedule_rejects_out_of_schema_field() -> None:
