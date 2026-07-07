@@ -625,6 +625,27 @@ review time, no deterministic regression, and explicit owner release approval.
 **N5 exit:** one approved pilot counterparty is queryable in production Delta
 with complete CSA economics and point-in-time lineage.
 
+### Next steps to tackle (collateral-limit / rule-schedule track)
+
+Follow-ups from the `collateral_rule_schedule` limit work, in order:
+
+1. **Limit-consistency validator rules (§5.3).** Add the deterministic adversarial
+   checks that mirror the `gold_collateral_limits` promotion guardrails: a
+   value-scoped limit must not exceed its blanket parent for the same dimension;
+   `basis` required when `limit_unit=percent`; percent limits ≤ 100%; absolute
+   limits carry a currency; aggregation stated. Catches silent extraction errors
+   before Gate A. Small, high-signal, no new storage.
+2. **Wire limit promotion into the live pipeline.** Once `collateral_rule_schedule`
+   earns a Gate S sign-off and an owner-verified golden set, route its validated
+   `limit[i]` rows through `LimitPromotion` at approval and land them via the gold
+   store (`--gold-store delta` alongside `gold_eligibility_terms`). Until then the
+   promotion stays engineering-only (the class is a 0.x template).
+3. **The optimizer join.** Compose `gold_collateral_limits` +
+   `gold_eligibility_terms` + (future) `margin_requirement` gold into the
+   constraint + demand set a collateral optimizer's solver consumes, joined on
+   counterparty/agreement/CSA-schedule-ref. This is Phase 2/3 territory (Reconciler
+   + platinum feature views) and must wait until N1–N5 gates are met.
+
 ### Then proceed to Phase 2
 
 Only after N1-N5 should the project prioritize amendment reconciliation,
