@@ -1,7 +1,7 @@
 # Document Refinery — Build Plan & LLM Handoff Document
 
-**Version:** 1.5 (N4 owner correction/dispute workflow checkpoint)
-**Checkpoint date:** 2026-07-06
+**Version:** 1.6 (chunked semantic extraction and local schema catalog checkpoint)
+**Checkpoint date:** 2026-07-07
 **Owner/CEO:** Joshua (quantitative researcher, securities finance / collateral / ML systems)
 **Purpose of this document:** Complete context transfer to any LLM or engineer continuing development. Read fully before writing code. Locked decisions are binding unless the owner explicitly reverses them.
 **Sibling projects:** Model Foundry (model lifecycle factory) and Collateral Desk Autopilot (desk operations copilot). Document Refinery is the third leg: it is the *ingestion and structuring layer* that turns unstructured financial documents into bitemporal, quant-ready Delta tables consumed by both siblings. It shares their chassis (task table, gates, presenter altitudes, distiller learning loop, sandbox TTL).
@@ -10,8 +10,10 @@
 
 ## 0. Current Repository Checkpoint
 
-The repository is no longer an initial scaffold. Phase 0/1 engineering and the
-hybrid semantic foundation plus N3 production-provider adapter wiring are implemented on `main`.
+The repository is no longer an initial scaffold. Phase 0/1 engineering, the
+hybrid semantic foundation, N3 production-provider adapter wiring, local/Ollama
+semantic experimentation support, and chunked semantic extraction are implemented
+on `main`.
 
 ### 0.1 Completed capabilities
 
@@ -31,18 +33,31 @@ hybrid semantic foundation plus N3 production-provider adapter wiring are implem
 | Provider-neutral semantic extraction | Foundation complete | Strict JSON schemas, original-language evidence, system-field rejection |
 | Independent semantic validation | Foundation complete | Separate-session enforcement and full judgment coverage |
 | Production semantic provider adapter | N3 engineering complete | OpenAI Responses adapter, CLI wiring, separate sessions, bounded retries, latency/token metadata |
+| Local/Ollama semantic provider support | Engineering complete for dev/test | `local`, `ollama`, and `openai-compatible` provider routes with output-token and timeout controls |
+| Semantic schema registry | Engineering complete | `semantic_schemas/` modules for eligibility and collateral valuation/margins |
+| Chunked semantic extraction | Engineering complete | Schema-defined chunks, per-chunk audit calls, path reindexing, `--semantic-chunk-concurrency` |
+| Federal Reserve valuation-margin schema | Engineering baseline complete | Fast local extraction for Fed securities valuation rows with lineage and chunking |
+| Local schema catalog | Complete | `docs/workflows/local-schema-catalog.md` maps semantic schemas and deterministic profiles |
 | Semantic audit trail | Foundation complete | Provider/model/session/version metadata plus request/response hashes |
 | Owner correction/dispute workflow | Local baseline complete | Authenticated confirm/correct/dispute on silver rows via a terminal review CLI; read-only review packet; append-only correction log; disputes block Gate A |
 | Operational SQL contracts | Complete for implemented layers | Bronze, silver, gold, tasks, gates, regression, semantic-call, and correction-action DDL |
 
 ### 0.2 Verified repository evidence
 
-- Automated suite: **42 passing tests**.
-- Static checks: **Ruff passing; strict mypy passing**.
+- Automated suite: **101 passing tests** at this checkpoint.
+- Static checks: **Ruff passing; strict mypy has previously passed for the
+  repo baseline and should be rerun before release/PR merge**.
 - Public corpus: **5/5 documents reach `gate_a_pending`**.
 - Public corpus output: **154 eligibility records / 2,156 silver fields**.
 - Public corpus validation: **zero disputes and zero unresolved locators for
   found values**.
+- Fast local public-profile suite: **15 passing tests** for deterministic
+  profile coverage.
+- Fed valuation-margin local semantic run: **58 silver fields** with two
+  extractor chunk calls plus one validator call recorded when run with
+  `--semantic-provider local --semantic-chunk-concurrency 2`.
+- Chunked semantic runner: full pytest suite passes; Ruff and `git diff --check`
+  pass after the implementation.
 - Unknown-language foundation: a Spanish unseen-template test routes through
   different extractor/validator sessions and stops at Gate A.
 - Prompt-injection control: model attempts to set system-controlled fields are
@@ -57,16 +72,22 @@ extraction.
 1. Known profiles use deterministic parsing and deterministic/evidence
    validation.
 2. Unknown profiles stop for classification review by default.
-3. Unknown profiles may use the semantic route only when both an approved
+3. Unknown or review-required profiles may use the semantic route when both a
    semantic extractor and an independent semantic validator adapter are
-   configured programmatically.
+   configured through the CLI or programmatically.
 4. Every successful path stops at Gate A unless an identified reviewer approves
    it.
+5. Schema modules may define bounded chunks. The extractor can run those chunks
+   serially or with `--semantic-chunk-concurrency N`, merge/reindex field paths,
+   and persist every chunk call in the semantic audit log.
 
 ### 0.4 Not complete
 
 - OpenAI is selected as the initial approved semantic-model provider, gated by zero-data-retention account/project settings before any production call.
 - Production semantic provider adapter and CLI wiring exist for the OpenAI Responses API; credentials remain environment-only.
+- Ollama/local model experimentation is supported, but local 14B-class models on
+  the owner's 24 GB RAM Mac are slow and inconsistent for large structured JSON
+  outputs. Prefer deterministic/local profile parsers where structure is stable.
 - OCR/layout coordinate contracts and a deterministic text-line coordinate adapter are implemented; scanned/image OCR benchmark execution is still pending.
 - No owner-verified ten-document golden set or measured review-time evidence.
 - Authenticated correction/dispute workflow exists as a terminal CLI baseline
@@ -236,11 +257,38 @@ The production extraction path is hybrid:
    application code. Models never create system IDs, validation status, or gold.
 5. A separately prompted validator, using a different model session, re-derives
    the required sample directly from the source artifact.
+6. Where a schema can produce bounded chunks, extraction may run chunk-by-chunk
+   with optional parallelism. The application merges silver rows, reindexes
+   repeated field paths, stores every extractor chunk call, and then runs the
+   independent validator over the merged candidate set.
 
 Semantic model calls must record provider, model, prompt/constitution/schema
 versions, session ID, request timestamp, and response artifact hash. Document
 content is untrusted data: instructions contained inside a document never alter
 the system role, output schema, tools, gates, or validation policy.
+
+Current schema locations:
+
+- Semantic schemas: `src/document_refinery/semantic_schemas/`
+  - `eligibility.py`: collateral eligibility semantic target.
+  - `valuation_margin.py`: Federal Reserve collateral valuation/margins schema,
+    including securities-row chunking.
+  - `base.py`: `SemanticSchemaSpec` and `SemanticTextChunk`.
+  - `registry.py`: runtime schema registry.
+- Fast deterministic public profiles:
+  `src/document_refinery/agents/public_schedules.py`.
+- Human-readable catalog:
+  `docs/workflows/local-schema-catalog.md`.
+
+Current fast local coverage:
+
+- Example 1: `portfolio_guidelines`.
+- Example 2: `cme`.
+- Example 3: `ficc_gsd`.
+- Example 4: `dtc`.
+- Example 5: `isda_vm`.
+- Fed collateral valuation PDF: semantic route with `--semantic-provider local`
+  and optional `--semantic-chunk-concurrency`.
 
 Language support is admitted one language/document-class pair at a time. Each
 pair requires terminology mappings, normalization rules, ≥10 owner-verified
@@ -312,9 +360,12 @@ silver conversion, separate-session validation, semantic routing hooks,
 original-language evidence enforcement, prompt-injection/system-field
 rejection, OpenAI Responses API adapter, CLI configuration for separate
 extractor/validator sessions, bounded retries/timeouts, semantic latency/token
-metadata, semantic audit hashes, JSONL audit storage, and Delta DDL. Still
-required: owner-verified unseen-template corpus, scanned/layout benchmark
-results, and release approval for the first language/class pair.
+metadata, semantic audit hashes, JSONL audit storage, Delta DDL,
+OpenAI-compatible/Ollama/local provider wiring, output-token caps, semantic
+schema registry, Fed valuation-margin schema, chunked semantic extraction, and
+local schema catalog documentation. Still required: owner-verified
+unseen-template corpus, scanned/layout benchmark results, and release approval
+for the first language/class pair.
 
 ### Phase 2 — Reconciler + Autopilot integration — not started
 - Amendment diffing, gold → rule-engine transform, unified sign-off with Autopilot.
@@ -350,6 +401,9 @@ results, and release approval for the first language/class pair.
     schemas, tools, gates, or system policy.
 15. Multilingual support is released per language and document class with its
     own owner-verified golden set; original-language lineage is mandatory.
+16. Chunking is an extraction optimization, not a validation shortcut. Chunked
+    extractor calls must still produce silver rows with verbatim source clauses,
+    merged/reindexed field paths, and independent validation before Gate A.
 
 ## 10. Open Decisions (for owner)
 - Production OCR/layout toolchain (the text-bearing PDF baseline is implemented;
@@ -364,6 +418,8 @@ results, and release approval for the first language/class pair.
 - First non-English language and terminology owner/reviewer.
 - Whether model routing optimizes first for accuracy, latency, cost, or a
   constrained combination after minimum quality gates are satisfied.
+- Whether to add a `--semantic-skip-validator` or local-validator fallback mode
+  for faster LLM experimentation while keeping rows pending for human review.
 
 ## 11. Success Criteria and Current Status
 - Phase 1 exit criteria: **pending owner evidence** (≥95% field accuracy and
@@ -446,6 +502,28 @@ model-controlled system fields when credentials and ZDR policy are configured.
 Production release remains gated by N2 benchmark evidence, owner-verified
 corpora, and Gate M approval.
 
+### Milestone N3B — local model/schema acceleration — engineering complete; evidence pending
+
+1. **Complete:** local semantic provider path supports the same strict
+   extractor/validator contracts without sending document text off-machine.
+2. **Complete:** Ollama and OpenAI-compatible chat-completions adapters support
+   timeout, retry, and output-token controls for model experimentation.
+3. **Complete:** semantic schemas are centralized in `semantic_schemas/`; known
+   deterministic public-profile parsers remain in `agents/public_schedules.py`.
+4. **Complete:** the Fed collateral valuation/margins table has a semantic
+   schema and fast local extractor path.
+5. **Complete:** schema-defined extraction chunks can be run serially or
+   concurrently with `--semantic-chunk-concurrency`, with per-chunk model-call
+   audit records and field-path offsetting.
+6. **Observed:** local Qwen 14B can run through Ollama, but on the owner's
+   24 GB RAM Mac it is slow and inconsistent for larger JSON responses. Use
+   deterministic/local schemas where structure is stable; reserve local LLMs for
+   ambiguous layouts or exploratory extraction.
+
+**N3B exit achieved for engineering:** the local acceleration path works for
+the Fed valuation table and the known public profiles. Production acceptance
+still requires owner-verified examples and review-time evidence.
+
 ### Milestone N4 — owner-verified release evidence
 
 1. **Local baseline complete:** an authenticated confirm/correct/dispute
@@ -471,6 +549,8 @@ corpora, and Gate M approval.
    documents to produce release evidence.
 4. Feed every correction into a golden case or constitution rule.
 5. Enforce Gate M against deterministic and semantic regression corpora.
+6. Expand fast local schemas only when a document family has stable structure;
+   otherwise add semantic schemas and keep the owner in Gate A.
 
 **N4 exit:** ≥95% field accuracy, 100% found-value lineage, ≤15-minute owner
 review time, no deterministic regression, and explicit owner release approval.
@@ -513,7 +593,12 @@ document-class expansion.
 8. Never translate away evidence: store original-language clauses and locators;
    translations are optional review artifacts only.
 9. Read `README.md`, `docs/phase-0-1-completion.md`,
-   `docs/public-corpus-validation.md`, and ADRs 0001-0003 before changing
+   `docs/public-corpus-validation.md`,
+   `docs/workflows/local-schema-catalog.md`, and ADRs 0001-0003 before changing
    architecture.
 10. Run the synthetic regression, public PDF suite, Ruff, and strict mypy before
     every extractor, validator, prompt, constitution, schema, or routing change.
+11. For local model work, start with `--semantic-provider local` to verify the
+    route and row count, then test Ollama with `--semantic-chunk-concurrency 1`
+    before trying parallel Qwen calls. On 24 GB RAM, multiple Qwen calls may
+    be slower than serial execution due to memory pressure.
