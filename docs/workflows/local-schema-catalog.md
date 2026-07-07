@@ -12,10 +12,27 @@ Current semantic schemas:
 
 | File | Document class | Used for |
 | --- | --- | --- |
-| `eligibility.py` | `collateral_eligibility_schedule` | Unknown CSA/triparty-style eligibility schedules |
+| `eligibility.py` | `collateral_eligibility_schedule` | Unknown CSA/triparty-style eligibility schedules (asset/haircut tables) |
 | `valuation_margin.py` | `collateral_valuation_margin_table` | Federal Reserve collateral valuation and margins tables |
+| `collateral_rule_schedule.py` | `collateral_rule_schedule` | **Fallback** rule-engine schema for rich negotiated dealer CSAs that exceed the eligibility table (issuer/country/rating bands, maturity bands, FX haircuts, valuation %, layered issuer/asset-class limits, wrong-way-risk, settlement/custodian, dual regulatory/internal eligibility, priority score, CSA economics) |
 | `base.py` | shared schema primitives | `SemanticSchemaSpec`, chunk definitions |
 | `registry.py` | schema registry | Registers semantic schemas for extractor/validator use |
+
+### The `collateral_rule_schedule` fallback
+
+Derived from `docs/real-world-collateral-schedule-examples.md`, this schema
+models a schedule as a **rule engine** rather than a haircut lookup. It is a
+superset target: use it when a document carries constraints the narrow
+`eligibility` schema cannot represent. Document-level terms (counterparty,
+agreement_id, csa_type, margin_type, threshold_amount, minimum_transfer_amount,
+independent_amount, rounding_convention, base_currency, valid_from/to) are
+emitted once; each eligibility rule is an indexed `rule[i].*` group.
+
+It is versioned `0.1.0` on purpose: it is a **template pending its own
+owner-verified golden set, a named downstream consumer (the collateral
+optimizer), and Gate M/Gate S approval** before production use (Locked Decision
+6). Like every schema it produces silver only; it does not define or write gold.
+Full CSA economics gold (`gold_csa_terms`) remains Milestone N5.
 
 The Fed valuation schema also defines chunking so row-level extraction can be run
 in bounded chunks with `--semantic-chunk-concurrency`.

@@ -273,9 +273,19 @@ the system role, output schema, tools, gates, or validation policy.
 Current schema locations:
 
 - Semantic schemas: `src/document_refinery/semantic_schemas/`
-  - `eligibility.py`: collateral eligibility semantic target.
+  - `eligibility.py`: collateral eligibility semantic target (asset/haircut table).
   - `valuation_margin.py`: Federal Reserve collateral valuation/margins schema,
     including securities-row chunking.
+  - `collateral_rule_schedule.py`: **fallback rule-engine schema** for rich
+    negotiated dealer CSAs that exceed the eligibility table (issuer/country/
+    rating bands, maturity bands, FX haircuts, valuation percentages, layered
+    issuer/asset-class limits, wrong-way-risk, settlement/custodian, dual
+    regulatory/internal eligibility, priority score, and document-level CSA
+    economics). Derived from `docs/real-world-collateral-schedule-examples.md`.
+    Versioned `0.1.0`: a template pending its own owner-verified golden set, a
+    named consumer (the collateral optimizer), and Gate M/Gate S approval before
+    production (Locked Decision 6). Silver-only like every schema; full CSA
+    economics gold stays Milestone N5.
   - `base.py`: `SemanticSchemaSpec` and `SemanticTextChunk`.
   - `registry.py`: runtime schema registry.
 - Fast deterministic public profiles:

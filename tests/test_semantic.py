@@ -41,6 +41,26 @@ def test_response_schemas_are_openai_strict_compatible() -> None:
     _assert_strict_mode_compatible(_validation_response_schema())
 
 
+def test_collateral_rule_schedule_schema_is_registered() -> None:
+    from document_refinery.semantic_schemas import get_schema
+
+    spec = get_schema("collateral_rule_schedule")
+    assert spec.doc_class == "collateral_rule_schedule"
+    # Superset fields the narrow eligibility schema cannot hold.
+    for field in (
+        "fx_haircut_pct",
+        "valuation_pct",
+        "issuer_limit_pct",
+        "wrong_way_risk_allowed",
+        "custodian",
+        "regulatory_eligible",
+        "threshold_amount",
+        "minimum_transfer_amount",
+    ):
+        assert field in spec.field_suffixes
+    assert spec.doc_class in {s.doc_class for s in semantic_schemas()}
+
+
 class ScriptedModel:
     def __init__(
         self,
@@ -202,6 +222,69 @@ def test_semantic_extractor_accepts_valuation_margin_schema() -> None:
     )
     assert result.rows[0].field_path == "valuation_margin[0].collateral_value_pct"
     assert result.rows[0].unit == "percent_of_market_value"
+
+
+def test_semantic_extractor_accepts_collateral_rule_schedule_schema() -> None:
+    clause = "US Treasury (1-5 years) rated AA- and above: valuation 98%, haircut 2%, FX 8%."
+    payload = {
+        "extractions": [
+            {
+                "field_path": "rule[0].fx_haircut_pct",
+                "raw_value": "8%",
+                "normalized_value": "8",
+                "value_type": "percentage",
+                "unit": "percent",
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;table=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    result = _extractor(model).extract(
+        doc_id="doc-csa",
+        doc_class="collateral_rule_schedule",
+        text=clause,
+    )
+    assert result.rows[0].field_path == "rule[0].fx_haircut_pct"
+    assert result.rows[0].doc_class == "collateral_rule_schedule"
+
+
+def test_collateral_rule_schedule_rejects_out_of_schema_field() -> None:
+    clause = "US Treasury eligible with a 2% haircut."
+    payload = {
+        "extractions": [
+            {
+                "field_path": "rule[0].not_a_real_field",
+                "raw_value": "x",
+                "normalized_value": "x",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": clause,
+                "source_locator": "page=1;row=1",
+                "confidence": 0.9,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    with pytest.raises(ValueError, match="outside the canonical schema"):
+        _extractor(model).extract(
+            doc_id="doc-csa",
+            doc_class="collateral_rule_schedule",
+            text=clause,
+        )
 
 
 def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
