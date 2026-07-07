@@ -642,11 +642,15 @@ Follow-ups from the `collateral_rule_schedule` limit work, in order:
    never touches the eligibility path; an inconsistency fails closed at Gate A.
    Still gated by owner Gate S + an owner-verified golden set before production
    use, and Delta landing for limits is not yet added (JSONL only).
-3. **The optimizer join.** Compose `gold_collateral_limits` +
-   `gold_eligibility_terms` + (future) `margin_requirement` gold into the
-   constraint + demand set a collateral optimizer's solver consumes, joined on
-   counterparty/agreement/CSA-schedule-ref. This is Phase 2/3 territory (Reconciler
-   + platinum feature views) and must wait until N1–N5 gates are met.
+3. **The optimizer join. Delivered (preview):**
+   `platinum/constraint_set.py` — `build_constraint_sets()` joins
+   `gold_eligibility_terms` + `gold_collateral_limits` into per-`(counterparty,
+   agreement)` `CollateralConstraintSet`s (schedule-wide limits attach to every
+   set; `active_only` keeps the current bitemporal version), with a reserved slot
+   for `gold_margin_requirement` demand once that gold table exists. Read-only,
+   no storage, not wired into production — a Phase-2/3 platinum feature-view
+   preview that still waits on the N1–N5 gates and the Reconciler before it drives
+   anything.
 
 ### Then proceed to Phase 2
 
