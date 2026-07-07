@@ -205,14 +205,20 @@ def test_semantic_extractor_accepts_valuation_margin_schema() -> None:
 
 
 def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
-    table_clause = "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    first_table_clause = (
+        "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    )
+    second_table_clause = "Stripped Treasury Coupons and STRIPS 98 97 96 94 90"
+    third_table_clause = "Agency Debt and Agency Mortgage-Backed Securities 97 96 95 92 88"
     loan_clause = "Loan Valuation and Margins Tables should not be in the securities chunk."
     full_text = "\n".join(
         (
             "Collateral Valuation",
             "Last Updated: 7.01.2026",
             "Securities Valuation and Margins Table",
-            table_clause,
+            first_table_clause,
+            second_table_clause,
+            third_table_clause,
             "Loan Valuation and Margins Tables",
             loan_clause,
         )
@@ -226,7 +232,7 @@ def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
                 "value_type": "percentage",
                 "unit": "percent_of_market_value",
                 "currency": None,
-                "source_clause": table_clause,
+                "source_clause": first_table_clause,
                 "source_locator": "page=1;table=securities;row=1",
                 "confidence": 0.88,
                 "ambiguity_flag": False,
@@ -251,8 +257,61 @@ def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
     prompt_payload = json.loads(model.requests[0].user_payload)
     prompt_text = prompt_payload["document_text_untrusted"]
     assert "Bounded extraction chunk" in prompt_text
-    assert table_clause in prompt_text
+    assert "Duration buckets for each row's five percentages" not in prompt_text
+    assert "Duration buckets for each row's five percentages" in model.requests[0].system_prompt
+    assert first_table_clause in prompt_text
+    assert second_table_clause in prompt_text
+    assert third_table_clause not in prompt_text
     assert loan_clause not in prompt_text
+
+
+def test_valuation_margin_extractor_repairs_prompt_line_source_clause() -> None:
+    first_table_clause = (
+        "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    )
+    second_table_clause = "STRIPS 96 96 96 96 94"
+    full_text = "\n".join(
+        (
+            "Collateral Valuation",
+            "Securities Valuation and Margins Table",
+            first_table_clause,
+            second_table_clause,
+        )
+    )
+    payload = {
+        "extractions": [
+            {
+                "field_path": "valuation_margin[5].asset_category",
+                "raw_value": "STRIPS",
+                "normalized_value": "STRIPS",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": "Treasury STRIPS 96 96 96 96 94",
+                "source_locator": "document_text_untrusted: line 5",
+                "confidence": 0.88,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    extractor = SemanticExtractor(
+        model,
+        extractor_version="semantic-test-1.0.0",
+        schemas=semantic_schemas(),
+    )
+
+    result = extractor.extract(
+        doc_id="doc-fed",
+        doc_class="collateral_valuation_margin_table",
+        text=full_text,
+    )
+
+    assert result.rows[0].source_clause == second_table_clause
 
 
 def test_semantic_validator_requires_separate_session() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
@@ -166,6 +167,7 @@ class SemanticExtractor:
                 doc_class=doc_class,
                 schema=schema,
                 text=text,
+                prompt_text=prompt_text,
             )
             for item in raw_rows
         )
@@ -197,6 +199,7 @@ class SemanticExtractor:
         doc_class: str,
         schema: SemanticSchemaSpec,
         text: str,
+        prompt_text: str,
     ) -> SilverExtraction:
         if not isinstance(value, dict):
             raise ValueError("each semantic extraction must be an object")
@@ -213,7 +216,15 @@ class SemanticExtractor:
         source_clause = _required_string(value, "source_clause")
         source_locator = _required_string(value, "source_locator")
         if value_type is not ValueType.NOT_FOUND and source_clause not in text:
-            raise ValueError(f"source clause is not verbatim document text: {field_path}")
+            repaired_source_clause = _repair_valuation_margin_source_clause(
+                field_path=field_path,
+                source_locator=source_locator,
+                text=text,
+                prompt_text=prompt_text,
+            )
+            if repaired_source_clause is None:
+                raise ValueError(f"source clause is not verbatim document text: {field_path}")
+            source_clause = repaired_source_clause
         if value_type is ValueType.NOT_FOUND:
             normalized_value = "not_found"
         else:
@@ -457,6 +468,34 @@ def _schema_map(
             field_suffixes=DEFAULT_SCHEMA.field_suffixes,
         )
     }
+
+
+def _repair_valuation_margin_source_clause(
+    *,
+    field_path: str,
+    source_locator: str,
+    text: str,
+    prompt_text: str,
+) -> str | None:
+    if not field_path.startswith("valuation_margin["):
+        return None
+    line_match = re.search(
+        r"\bline\s*(?:[=:]\s*)?(\d+)",
+        source_locator,
+        flags=re.IGNORECASE,
+    )
+    if line_match is None:
+        return None
+    prompt_lines = [line.strip() for line in prompt_text.splitlines()]
+    line_index = int(line_match.group(1)) - 1
+    if line_index < 0 or line_index >= len(prompt_lines):
+        return None
+    candidate = prompt_lines[line_index]
+    if candidate not in text:
+        return None
+    if re.search(r"(?:\s+\d{2,3}){5}\s*$", candidate) is None:
+        return None
+    return candidate
 
 
 def _object_response(content: str) -> dict[str, object]:

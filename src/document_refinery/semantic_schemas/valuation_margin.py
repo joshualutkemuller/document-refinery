@@ -7,6 +7,11 @@ import re
 from document_refinery.semantic_schemas.base import SemanticSchemaSpec
 
 DOC_CLASS = "collateral_valuation_margin_table"
+MAX_SECURITIES_SOURCE_ROWS = 2
+DURATION_BUCKET_GUIDE = (
+    "Duration buckets for each row's five percentages, in order: "
+    "0-1 years, >1-3 years, >3-5 years, >5-10 years, >10 years."
+)
 
 FIELD_SUFFIXES = frozenset(
     {
@@ -41,14 +46,21 @@ FIELD_SUFFIXES = frozenset(
 )
 
 SCHEMA_DICTIONARY = (
-    "Use document metadata paths: document.publisher, document.page_title, "
-    "document.last_updated, document.effective_date, document.program_context. "
-    "For securities valuation table chunks, emit only the core indexed valuation "
-    "fields unless another value is explicit: valuation_margin[0].asset_category, "
-    "valuation_margin[0].duration_bucket, valuation_margin[0].duration_min_years, "
-    "valuation_margin[0].duration_max_years, valuation_margin[0].collateral_value_pct, "
-    "valuation_margin[0].implied_haircut_pct. Do not emit loan_margin fields unless "
-    "the supplied chunk is a loan margin table."
+    "For bounded securities valuation table chunks, emit only indexed "
+    "valuation_margin fields. Do not emit document metadata fields for bounded "
+    "chunks. For each source row and duration bucket, emit exactly these three "
+    "fields and no others: valuation_margin[0].asset_category, "
+    "valuation_margin[0].duration_bucket, valuation_margin[0].collateral_value_pct. "
+    "Each securities source row has five trailing percentages, so each source row "
+    "must produce five indexed valuation_margin groups, one for each percentage. "
+    "With two source rows, produce ten valuation_margin groups and about thirty "
+    "extraction objects. "
+    "Do not emit duration_min_years, duration_max_years, implied_haircut_pct, or "
+    "loan_margin fields for bounded securities chunks. "
+    f"{DURATION_BUCKET_GUIDE} Use the securities source row itself as source_clause "
+    "for each asset, duration, and value field; never quote the duration guide as "
+    "source_clause. Every source_clause must be a complete source row copied "
+    "verbatim from the supplied document text."
 )
 
 CONSTITUTION = (
@@ -78,12 +90,12 @@ def prepare_text(text: str) -> str:
     table_rows = [line for line in section if re.search(r"(?:\s+\d{2,3}){5}\s*$", line)]
     if not table_rows:
         return text
-    limited_rows = table_rows[:1]
+    limited_rows = table_rows[:MAX_SECURITIES_SOURCE_ROWS]
     return "\n".join(
         (
             "Collateral Valuation",
             "Securities Valuation and Margins Table",
-            "Bounded extraction chunk: extract only this securities source row.",
+            "Bounded extraction chunk: extract only these securities source rows.",
             *header,
             *limited_rows,
         )
