@@ -1,0 +1,14 @@
+2016 ISDA Variation Margin Credit Support Annex
+Counterparty: [REPLACE WITH VERIFIED COUNTERPARTY]
+Agreement ID: [REPLACE WITH VERIFIED AGREEMENT ID]
+CSA Type: 2016 VM CSA
+Margin Type: VM
+Base Currency: USD
+
+Eligible Collateral Schedule
+Asset: USD Cash | Rating Requirement: None | Haircut: 0%
+Asset: EUR Cash | Rating Requirement: None | Haircut: 1%
+Asset: GBP Cash | Rating Requirement: None | Haircut: 1%
+Asset: US Treasury | Rating Requirement: AA+ | Haircut: 1-3%
+Asset: German Bund | Rating Requirement: AA+ | Haircut: 1-3%
+Asset: UK Gilt | Rating Requirement: AA | Haircut: 2-5%

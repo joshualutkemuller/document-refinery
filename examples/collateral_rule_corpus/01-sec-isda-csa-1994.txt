@@ -1,0 +1,18 @@
+ISDA Credit Support Annex (1994 New York Law)
+Counterparty: [REPLACE WITH VERIFIED COUNTERPARTY]
+Agreement ID: [REPLACE WITH VERIFIED AGREEMENT ID]
+CSA Type: 1994 New York Law
+Governing Law: New York
+Margin Type: VM
+
+Eligible Collateral Schedule
+Asset: USD Cash | Eligible: Yes | Haircut: 0%
+Asset: EUR Cash | Eligible: Yes | Haircut: 1%
+Asset: GBP Cash | Eligible: Yes | Haircut: 1%
+Asset: US Treasury (less than 1 year) | Eligible: Yes | Haircut: 0.5%
+Asset: US Treasury (1 to 5 years) | Eligible: Yes | Haircut: 2%
+Asset: US Treasury (greater than 10 years) | Eligible: Yes | Haircut: 6%
+Asset: Agency Bonds | Eligible: Yes | Haircut: 4%
+Asset: AA Corporate Bonds | Eligible: Yes | Haircut: 8%
+Asset: A Corporate Bonds | Eligible: Yes | Haircut: 12%
+Asset: S&P 500 Equities | Eligible: Yes | Haircut: 15%

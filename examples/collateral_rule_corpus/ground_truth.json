@@ -1,0 +1,99 @@
+{
+  "01-sec-isda-csa-1994": {
+    "title": "SEC-filed ISDA Credit Support Annex (1994 New York Law)",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1083199/000119312507210724/dex996.htm",
+    "doc_class": "collateral_rule_schedule",
+    "owner_verified": false,
+    "note": "Illustrative expectations transcribed from docs/real-world-collateral-schedule-examples.md. Replace .txt with the sanitized fetched CSA and confirm every value before setting owner_verified: true.",
+    "expected": {
+      "csa_type": "1994 New York Law",
+      "margin_type": "VM",
+      "rule[0].asset_type": "USD Cash",
+      "rule[0].eligible": "true",
+      "rule[0].haircut_pct": "0",
+      "rule[3].asset_type": "US Treasury (1 to 5 years)",
+      "rule[3].haircut_pct": "2",
+      "rule[8].asset_type": "A Corporate Bonds",
+      "rule[8].haircut_pct": "12"
+    }
+  },
+  "02-isda-template-schedule": {
+    "title": "ISDA Template Collateral Schedules (UMR Initial Margin)",
+    "source_url": "https://www.isda.org/book/isda-template-collateral-schedules/",
+    "doc_class": "collateral_rule_schedule",
+    "owner_verified": false,
+    "note": "Illustrative expectations; replace with sanitized fetched template and verify.",
+    "expected": {
+      "csa_type": "ISDA IM Template",
+      "margin_type": "IM",
+      "rule[0].asset_type": "Cash",
+      "rule[0].haircut_pct": "0",
+      "rule[1].asset_type": "AAA Government Bonds",
+      "rule[1].rating_min": "AAA",
+      "rule[1].haircut_pct": "0.5",
+      "rule[6].asset_type": "BBB Corporate Bonds",
+      "rule[6].haircut_pct": "15"
+    }
+  },
+  "03-isda-vm-csa-2016": {
+    "title": "2016 ISDA Variation Margin CSA",
+    "source_url": "https://uk.practicallaw.thomsonreuters.com/w-001-8921",
+    "doc_class": "collateral_rule_schedule",
+    "owner_verified": false,
+    "note": "Illustrative expectations; replace with sanitized fetched CSA and verify. Haircut ranges require owner normalization.",
+    "expected": {
+      "csa_type": "2016 VM CSA",
+      "margin_type": "VM",
+      "base_currency": "USD",
+      "rule[0].asset_type": "USD Cash",
+      "rule[0].haircut_pct": "0",
+      "rule[3].asset_type": "US Treasury",
+      "rule[3].rating_min": "AA+"
+    }
+  },
+  "04-isda-operational-eligibility": {
+    "title": "ISDA Operational Collateral Eligibility Guidance",
+    "source_url": "https://www.isda.org/a/GbugE/Mitigating-Eligible-Collateral-Risks-From-Documentation-to-Operations.pdf",
+    "doc_class": "collateral_rule_schedule",
+    "owner_verified": false,
+    "note": "Illustrative single operational rule; showcases the superset fields. Replace with the sanitized fetched document and verify.",
+    "expected": {
+      "margin_type": "VM",
+      "rule[0].asset_type": "Government Bond",
+      "rule[0].currency": "USD",
+      "rule[0].country": "United States",
+      "rule[0].issuer": "US Treasury",
+      "rule[0].rating_min": "AA+",
+      "rule[0].minimum_issue_size": "500MM USD",
+      "rule[0].remaining_maturity_max_days": "1825",
+      "rule[0].haircut_pct": "2",
+      "rule[0].fx_haircut_pct": "8",
+      "rule[0].concentration_limit_pct": "25",
+      "rule[0].custodian": "BNY Mellon",
+      "rule[0].settlement_location": "Fedwire",
+      "rule[0].eligible": "true"
+    }
+  },
+  "05-dealer-csa-rule": {
+    "title": "Typical Dealer CSA Schedule (rule-based eligibility engine)",
+    "source_url": "https://www.sec.gov/Archives/edgar/data/1083199/000119312507210724/dex996.htm",
+    "doc_class": "collateral_rule_schedule",
+    "owner_verified": false,
+    "note": "Illustrative dealer rule with wrong-way-risk and priority score. Replace with a sanitized real dealer/SEC-filed CSA and verify.",
+    "expected": {
+      "margin_type": "VM",
+      "rule[0].asset_class": "Government Bond",
+      "rule[0].country": "United States",
+      "rule[0].currency": "USD",
+      "rule[0].issuer": "US Treasury",
+      "rule[0].rating_min": "AA",
+      "rule[0].remaining_maturity_max_days": "365",
+      "rule[0].haircut_pct": "0.5",
+      "rule[0].concentration_limit_pct": "100",
+      "rule[0].wrong_way_risk_allowed": "false",
+      "rule[0].settlement_location": "Fedwire",
+      "rule[0].eligible": "true",
+      "rule[0].priority_score": "1"
+    }
+  }
+}
