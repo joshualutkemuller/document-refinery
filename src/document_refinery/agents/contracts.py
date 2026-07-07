@@ -44,8 +44,9 @@ Always validate low-confidence and ambiguous fields, plus the supplied stratifie
 Check source locators, normalization, limits in [0, 100], date ordering, and haircut
 monotonicity across rating/tenor bands unless the document explicitly states otherwise.
 Unresolvable disagreement remains disputed and must enter the owner queue.
+If a candidate source_clause is correct, reuse it exactly as evidence_clause so
+the evidence remains verbatim source text.
 
 CANONICAL SCHEMA AND FIELD DICTIONARY
 {self.schema_dictionary}
 """
-

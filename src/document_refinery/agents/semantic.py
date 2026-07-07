@@ -305,6 +305,7 @@ class SemanticValidator:
                             "field_path": row.field_path,
                             "normalized_value": row.normalized_value,
                             "source_locator": row.source_locator,
+                            "source_clause": row.source_clause,
                         }
                         for row in extractions
                     ],
