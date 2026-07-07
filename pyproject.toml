@@ -19,6 +19,7 @@ dev = [
   "ruff>=0.7",
 ]
 pdf = ["pdfplumber>=0.11"]
+ocr = ["pytesseract>=0.3.10", "pypdfium2>=4.0"]
 delta = ["deltalake>=1.0", "pyarrow>=15"]
 
 [project.scripts]
@@ -50,5 +51,16 @@ files = ["src"]
 
 # Third-party libraries without type stubs (optional/extra dependencies).
 [[tool.mypy.overrides]]
-module = ["pypdf", "pypdf.*", "deltalake", "deltalake.*", "pyarrow", "pyarrow.*"]
+module = [
+    "pypdf",
+    "pypdf.*",
+    "deltalake",
+    "deltalake.*",
+    "pyarrow",
+    "pyarrow.*",
+    "pytesseract",
+    "pytesseract.*",
+    "pypdfium2",
+    "pypdfium2.*",
+]
 ignore_missing_imports = true

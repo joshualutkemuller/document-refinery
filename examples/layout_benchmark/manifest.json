@@ -1,0 +1,26 @@
+{
+  "_comment": "Template for the N2 three-document OCR/layout benchmark. Replace the placeholder paths with the owner-approved, sanitized documents and tune the per-document thresholds. Paths are resolved relative to this manifest file. Run with: document-refinery benchmark examples/layout_benchmark/manifest.json --workspace .benchmark --adapter <text-line|pdfplumber|ocr>",
+  "cases": [
+    {
+      "name": "scanned-schedule",
+      "path": "documents/scanned_schedule.pdf",
+      "minimum_text_characters": 500,
+      "minimum_table_cells": 0,
+      "expected_locator_count": null
+    },
+    {
+      "name": "multi-column-schedule",
+      "path": "documents/multi_column_schedule.pdf",
+      "minimum_text_characters": 500,
+      "minimum_table_cells": 0,
+      "expected_locator_count": null
+    },
+    {
+      "name": "nested-merged-cell-schedule",
+      "path": "documents/nested_merged_cell_schedule.pdf",
+      "minimum_text_characters": 500,
+      "minimum_table_cells": 10,
+      "expected_locator_count": null
+    }
+  ]
+}

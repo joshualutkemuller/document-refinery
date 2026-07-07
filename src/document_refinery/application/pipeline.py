@@ -24,6 +24,7 @@ from document_refinery.application.corrections import (
     CorrectionRequest,
     CorrectionService,
 )
+from document_refinery.application.distiller import Distiller, DistillerReport
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import GoldEligibilityTerm, SilverExtraction
@@ -37,6 +38,12 @@ from document_refinery.infrastructure.layout import (
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.model_calls import SemanticCallStore
 from document_refinery.infrastructure.records import GoldStore, SilverStore
+from document_refinery.infrastructure.review_timing import (
+    ReviewTiming,
+    ReviewTimingLog,
+    ReviewTimingSummary,
+    summarize_timings,
+)
 from document_refinery.infrastructure.tasks import TaskStatus, TaskStore
 
 
@@ -99,6 +106,9 @@ class RefineryPipeline:
         self.gate = GateAService()
         self.corrections = CorrectionService()
         self.correction_log = CorrectionLog(workspace / "corrections")
+        self.review_timing_log = ReviewTimingLog(
+            workspace / "reviews" / "review_timings.jsonl"
+        )
         self.memory_store = CorrectionMemoryStore(
             workspace / "memory" / "corrections_memory.jsonl"
         )
@@ -216,6 +226,7 @@ class RefineryPipeline:
         *,
         requests: tuple[CorrectionRequest, ...],
         reviewer: str,
+        review_seconds: float | None = None,
     ) -> CorrectionOutcome:
         """Apply owner confirm/correct/dispute actions to a document under review.
 
@@ -236,6 +247,17 @@ class RefineryPipeline:
         )
         self.silver.write(outcome.rows, stage="reviewed")
         self.correction_log.append(doc_id, outcome.records)
+        if review_seconds is not None:
+            # Capture the ≤15-minute N4 exit metric from a real review pass.
+            self.review_timing_log.append(
+                ReviewTiming(
+                    doc_id=doc_id,
+                    reviewer=reviewer,
+                    seconds=review_seconds,
+                    action_count=len(outcome.records),
+                    decided_at=datetime.now(UTC),
+                )
+            )
         # Learn from the corrections so the same mistake is caught next time.
         self.memory.learn(outcome.rows, outcome.records)
         self.memory_store.save(self.memory)
@@ -250,6 +272,21 @@ class RefineryPipeline:
     ) -> dict[str, LearnedCorrection]:
         """Learned corrections that apply to these rows (extraction_id -> lesson)."""
         return self.memory.suggestions_for(rows)
+
+    def distill(self, *, min_rule_occurrences: int = 2) -> DistillerReport:
+        """Replay the whole correction log into owner-reviewable distiller proposals.
+
+        Reads the durable correction log across every document and produces
+        constitution-rule and golden-case proposals (handoff §5.7). Purely
+        read-only: it proposes, the owner approves.
+        """
+        records = self.correction_log.read_all()
+        return Distiller(min_rule_occurrences=min_rule_occurrences).distill(records)
+
+    def review_timings(self) -> tuple[tuple[ReviewTiming, ...], ReviewTimingSummary]:
+        """All recorded review durations plus their ≤15-minute-target summary."""
+        timings = self.review_timing_log.read_all()
+        return timings, summarize_timings(timings)
 
     def approve(self, doc_id: str, *, approved_by: str) -> tuple[GoldEligibilityTerm, ...]:
         task = self.tasks.get(doc_id)

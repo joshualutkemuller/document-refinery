@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
+from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
 
@@ -30,6 +32,16 @@ from document_refinery.infrastructure.chat_completions import (
     DEFAULT_OLLAMA_URL,
     build_ollama_model,
     build_openai_compatible_model,
+)
+from document_refinery.infrastructure.layout import (
+    LayoutAdapter,
+    OcrLayoutAdapter,
+    PdfPlumberLayoutAdapter,
+    TextLineLayoutAdapter,
+)
+from document_refinery.infrastructure.layout_benchmark import (
+    LayoutBenchmarkCase,
+    run_layout_benchmark,
 )
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
@@ -113,6 +125,65 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of *.txt schedules + ground_truth.json",
     )
     accuracy.add_argument("--json", action="store_true", dest="as_json")
+
+    benchmark = subcommands.add_parser(
+        "benchmark",
+        help="run the reproducible N2 OCR/layout benchmark over a document manifest",
+    )
+    benchmark.add_argument(
+        "manifest",
+        type=Path,
+        help="JSON manifest of benchmark cases (see docs/toolchain-evaluation.md)",
+    )
+    benchmark.add_argument("--workspace", type=Path, required=True)
+    benchmark.add_argument(
+        "--adapter",
+        choices=("text-line", "pdfplumber", "ocr"),
+        default="pdfplumber",
+        help=(
+            "layout adapter under test: 'pdfplumber' (text-bearing PDFs, default), "
+            "'ocr' (scanned/image-only PDFs, needs the 'ocr' extra), or 'text-line' "
+            "(deterministic text/Markdown fallback)"
+        ),
+    )
+    benchmark.add_argument("--json", action="store_true", dest="as_json")
+
+    distill = subcommands.add_parser(
+        "distill",
+        help="replay owner corrections into constitution-rule and golden-case proposals",
+    )
+    distill.add_argument("--workspace", type=Path, required=True)
+    distill.add_argument(
+        "--min-occurrences",
+        type=int,
+        default=2,
+        help="minimum repeated corrections before proposing a normalization rule",
+    )
+    distill.add_argument(
+        "--ground-truth-out",
+        type=Path,
+        help="write the golden-case proposals as a ground_truth.json fragment for a corpus",
+    )
+    distill.add_argument("--json", action="store_true", dest="as_json")
+
+    review_time = subcommands.add_parser(
+        "review-time",
+        help="report measured owner review time against the 15-minute N4 target",
+    )
+    review_time.add_argument("--workspace", type=Path, required=True)
+    review_time.add_argument("--json", action="store_true", dest="as_json")
+
+    corpus_check = subcommands.add_parser(
+        "corpus-check",
+        help="validate an owner-verified accuracy corpus and report release readiness",
+    )
+    corpus_check.add_argument(
+        "--corpus",
+        type=Path,
+        default=Path("examples/golden_corpus"),
+        help="directory of *.txt schedules + ground_truth.json",
+    )
+    corpus_check.add_argument("--json", action="store_true", dest="as_json")
 
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
@@ -254,6 +325,14 @@ def main() -> int:
         return _run_memory(args)
     elif args.command == "accuracy":
         return _run_accuracy(args)
+    elif args.command == "benchmark":
+        return _run_benchmark(args)
+    elif args.command == "distill":
+        return _run_distill(args)
+    elif args.command == "review-time":
+        return _run_review_time(args)
+    elif args.command == "corpus-check":
+        return _run_corpus_check(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -423,10 +502,12 @@ def _run_review(args: argparse.Namespace) -> int:
         if not args.reviewer:
             print("error: --reviewer is required to apply review actions")
             return 2
+        review_seconds: float | None = None
         if args.corrections is not None:
-            requests = _load_corrections(args.corrections)
+            requests, review_seconds = _load_corrections(args.corrections)
         else:
             rows = pipeline.review_rows(args.doc_id)
+            started = time.perf_counter()
             requests = build_review_requests(
                 rows,
                 prompt=input,
@@ -434,6 +515,8 @@ def _run_review(args: argparse.Namespace) -> int:
                 pending_only=args.pending_only,
                 suggestions=pipeline.memory_suggestions(rows),
             )
+            # Wall-clock of the actual interactive walk — the N4 review-time metric.
+            review_seconds = time.perf_counter() - started
         if not requests:
             print(json.dumps({"doc_id": args.doc_id, "applied": 0, "actions": {}}))
             return 0
@@ -441,6 +524,7 @@ def _run_review(args: argparse.Namespace) -> int:
             args.doc_id,
             requests=requests,
             reviewer=args.reviewer,
+            review_seconds=review_seconds,
         )
         print(json.dumps(_review_summary(args.doc_id, outcome)))
         return 0
@@ -483,6 +567,190 @@ def _run_accuracy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_layout_adapter(name: str) -> LayoutAdapter:
+    if name == "text-line":
+        return TextLineLayoutAdapter()
+    if name == "pdfplumber":
+        return PdfPlumberLayoutAdapter()
+    if name == "ocr":
+        return OcrLayoutAdapter()
+    raise ValueError(f"unsupported layout adapter: {name}")
+
+
+def _load_benchmark_cases(manifest: Path) -> tuple[LayoutBenchmarkCase, ...]:
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    entries = payload.get("cases") if isinstance(payload, dict) else payload
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("manifest must contain a non-empty 'cases' list")
+    base = manifest.resolve().parent
+    cases: list[LayoutBenchmarkCase] = []
+    for entry in entries:
+        raw_path = Path(str(entry["path"]))
+        path = raw_path if raw_path.is_absolute() else base / raw_path
+        expected = entry.get("expected_locator_count")
+        cases.append(
+            LayoutBenchmarkCase(
+                name=str(entry["name"]),
+                path=path,
+                minimum_text_characters=int(entry.get("minimum_text_characters", 1)),
+                minimum_table_cells=int(entry.get("minimum_table_cells", 0)),
+                expected_locator_count=None if expected is None else int(expected),
+            )
+        )
+    return tuple(cases)
+
+
+def _run_benchmark(args: argparse.Namespace) -> int:
+    if not args.manifest.exists():
+        print(f"error: manifest not found: {args.manifest}")
+        return 2
+    cases = _load_benchmark_cases(args.manifest)
+    results = run_layout_benchmark(
+        workspace=args.workspace,
+        cases=cases,
+        layout_adapter=_build_layout_adapter(args.adapter),
+    )
+    output = args.workspace / "layout_benchmark_results.json"
+    if args.as_json:
+        print(json.dumps([asdict(result) for result in results], indent=2))
+    else:
+        for result in results:
+            marker = "PASS" if result.status == "passed" else "FAIL"
+            print(
+                f"[{marker}] {result.name}: {result.adapter} v{result.adapter_version} — "
+                f"{result.text_characters} chars, {result.table_cell_count} cells, "
+                f"conf {result.mean_confidence:.2f}, {result.reading_order_locators} locators, "
+                f"reproducibility {result.locator_reproducibility:.0%}, {result.latency_ms}ms"
+            )
+            if result.issues:
+                print(f"        issues: {', '.join(result.issues)}")
+        print(f"Benchmark results: {output}")
+    return 0 if all(result.status == "passed" for result in results) else 1
+
+
+def _run_distill(args: argparse.Namespace) -> int:
+    pipeline = RefineryPipeline(args.workspace)
+    try:
+        report = pipeline.distill(min_rule_occurrences=args.min_occurrences)
+    finally:
+        pipeline.close()
+
+    output_dir = args.workspace / "distiller"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    proposals_json = output_dir / "proposals.json"
+    proposals_json.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
+    proposals_md = output_dir / "proposals.md"
+    proposals_md.write_text(report.to_markdown(), encoding="utf-8")
+    if args.ground_truth_out is not None:
+        args.ground_truth_out.parent.mkdir(parents=True, exist_ok=True)
+        args.ground_truth_out.write_text(
+            json.dumps(report.ground_truth_fragment(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    if args.as_json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return 0
+    print(report.to_markdown(), end="")
+    print(f"\nProposals: {proposals_json}")
+    print(f"Proposals (markdown): {proposals_md}")
+    if args.ground_truth_out is not None:
+        print(f"Ground-truth fragment: {args.ground_truth_out}")
+    return 0
+
+
+def _run_review_time(args: argparse.Namespace) -> int:
+    pipeline = RefineryPipeline(args.workspace)
+    try:
+        timings, summary = pipeline.review_timings()
+    finally:
+        pipeline.close()
+    if args.as_json:
+        print(
+            json.dumps(
+                {
+                    "summary": summary.to_dict(),
+                    "reviews": [timing.to_json() for timing in timings],
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if summary.count == 0:
+        print("No review-time measurements yet. Run `review` to record them.")
+        return 0
+    print(
+        f"Review time across {summary.count} review(s): "
+        f"median {summary.median_minutes:.1f}m, mean {summary.mean_minutes:.1f}m, "
+        f"max {summary.max_minutes:.1f}m (target ≤{summary.target_minutes:.0f}m)."
+    )
+    print(f"Within target: {summary.within_target_count}/{summary.count}")
+    over = [t for t in timings if t.minutes > summary.target_minutes]
+    for timing in over:
+        print(f"  OVER: {timing.doc_id} took {timing.minutes:.1f}m ({timing.action_count} actions)")
+    gate = "MEETS" if summary.meets_target else "BELOW"
+    print(f"N4 review-time gate: {gate} target.")
+    return 0
+
+
+def _run_corpus_check(args: argparse.Namespace) -> int:
+    ground_truth_path = args.corpus / "ground_truth.json"
+    if not ground_truth_path.exists():
+        print(f"error: no ground_truth.json in {args.corpus}")
+        return 2
+    ground_truth = json.loads(ground_truth_path.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    total = owner_verified = 0
+    for case_id, meta in sorted(ground_truth.items()):
+        total += 1
+        if not (args.corpus / f"{case_id}.txt").exists():
+            problems.append(f"{case_id}: missing {case_id}.txt")
+        expected = meta.get("expected") if isinstance(meta, dict) else None
+        if not isinstance(expected, dict) or not expected:
+            problems.append(f"{case_id}: empty or missing 'expected' block")
+        elif any(not isinstance(v, str) for v in expected.values()):
+            problems.append(f"{case_id}: all expected values must be strings")
+        if isinstance(meta, dict) and bool(meta.get("owner_verified", False)):
+            owner_verified += 1
+    orphans = sorted(
+        path.stem
+        for path in args.corpus.glob("*.txt")
+        if path.stem not in ground_truth
+    )
+    for orphan in orphans:
+        problems.append(f"{orphan}.txt: no ground_truth entry")
+
+    needs = []
+    if total < 10:
+        needs.append(f"{10 - total} more document(s)")
+    if owner_verified < 10:
+        needs.append(f"{10 - owner_verified} more owner-verified document(s)")
+    report = {
+        "corpus": str(args.corpus),
+        "document_count": total,
+        "owner_verified_document_count": owner_verified,
+        "problems": problems,
+        "release_blockers": needs,
+        "structurally_valid": not problems,
+    }
+    if args.as_json:
+        print(json.dumps(report, indent=2))
+        return 0 if not problems else 1
+    print(f"Corpus: {args.corpus}")
+    print(f"Documents: {total} ({owner_verified} owner-verified)")
+    if problems:
+        print(f"Structural problems ({len(problems)}):")
+        for problem in problems:
+            print(f"  - {problem}")
+    else:
+        print("Structure: OK")
+    if needs:
+        print("Release gate still needs: " + ", ".join(needs))
+    else:
+        print("Release gate document counts satisfied (run `accuracy` for the score).")
+    return 0 if not problems else 1
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     store = CorrectionMemoryStore(args.workspace / "memory" / "corrections_memory.jsonl")
     entries = store.load().entries()
@@ -514,9 +782,14 @@ def _review_summary(doc_id: str, outcome: CorrectionOutcome) -> dict[str, object
     return {"doc_id": doc_id, "applied": len(outcome.records), "actions": counts}
 
 
-def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
+def _load_corrections(
+    path: Path,
+) -> tuple[tuple[CorrectionRequest, ...], float | None]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     entries = payload.get("corrections") if isinstance(payload, dict) else payload
+    review_seconds = (
+        payload.get("review_seconds") if isinstance(payload, dict) else None
+    )
     if not isinstance(entries, list) or not entries:
         raise ValueError("corrections file must contain a non-empty 'corrections' list")
     requests: list[CorrectionRequest] = []
@@ -532,7 +805,7 @@ def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
                 note=None if entry.get("note") is None else str(entry["note"]),
             )
         )
-    return tuple(requests)
+    return tuple(requests), (None if review_seconds is None else float(review_seconds))
 
 
 def _build_semantic_backends(
