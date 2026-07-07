@@ -43,19 +43,12 @@ FIELD_SUFFIXES = frozenset(
 SCHEMA_DICTIONARY = (
     "Use document metadata paths: document.publisher, document.page_title, "
     "document.last_updated, document.effective_date, document.program_context. "
-    "For securities valuation tables, use indexed valuation rows: "
-    "valuation_margin[0].collateral_family, valuation_margin[0].asset_category, "
-    "valuation_margin[0].instrument_type, valuation_margin[0].rating_condition, "
-    "valuation_margin[0].currency_condition, valuation_margin[0].duration_bucket, "
-    "valuation_margin[0].duration_min_years, valuation_margin[0].duration_max_years, "
-    "valuation_margin[0].collateral_value_pct, valuation_margin[0].implied_haircut_pct, "
-    "valuation_margin[0].secondary_credit_additional_margin_applies, "
-    "valuation_margin[0].notes. For loan valuation tables, use loan_margin[0]."
-    "institution_scope, loan_margin[0].loan_category, loan_margin[0].coupon_type, "
-    "loan_margin[0].risk_rating, loan_margin[0].repayment_type, "
-    "loan_margin[0].time_to_maturity_years, loan_margin[0].margin_min_pct, "
-    "loan_margin[0].margin_weighted_avg_pct, loan_margin[0].margin_max_pct, "
-    "loan_margin[0].displayed_margin_pct, loan_margin[0].notes."
+    "For securities valuation table chunks, emit only the core indexed valuation "
+    "fields unless another value is explicit: valuation_margin[0].asset_category, "
+    "valuation_margin[0].duration_bucket, valuation_margin[0].duration_min_years, "
+    "valuation_margin[0].duration_max_years, valuation_margin[0].collateral_value_pct, "
+    "valuation_margin[0].implied_haircut_pct. Do not emit loan_margin fields unless "
+    "the supplied chunk is a loan margin table."
 )
 
 CONSTITUTION = (
@@ -85,12 +78,12 @@ def prepare_text(text: str) -> str:
     table_rows = [line for line in section if re.search(r"(?:\s+\d{2,3}){5}\s*$", line)]
     if not table_rows:
         return text
-    limited_rows = table_rows[:10]
+    limited_rows = table_rows[:1]
     return "\n".join(
         (
             "Collateral Valuation",
             "Securities Valuation and Margins Table",
-            "Bounded extraction chunk: extract only the securities rows listed below.",
+            "Bounded extraction chunk: extract only this securities source row.",
             *header,
             *limited_rows,
         )
