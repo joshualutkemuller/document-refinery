@@ -51,7 +51,7 @@ def test_chat_completions_maps_payload_and_parses_content(
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     model = ChatCompletionsSemanticModel(
         model="llama3.1", base_url="http://host/v1/chat/completions",
-        provider="ollama", session_id="s", api_key=None,
+        provider="ollama", session_id="s", api_key=None, max_output_tokens=321,
     )
     response = model.generate(_request())
 
@@ -59,6 +59,7 @@ def test_chat_completions_maps_payload_and_parses_content(
     assert response.provider == "ollama"
     assert response.usage == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
     payload = captured["data"]
+    assert payload["max_tokens"] == 321  # type: ignore[index]
     assert payload["response_format"]["type"] == "json_schema"  # type: ignore[index]
     assert payload["response_format"]["json_schema"]["strict"] is True  # type: ignore[index]
     # No API key -> no Authorization header (Ollama).

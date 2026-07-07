@@ -131,6 +131,7 @@ class SemanticExtractor:
         language: str = "und",
     ) -> SemanticExtractionResult:
         schema = self._schema(doc_class)
+        prompt_text = schema.prepare_text(text)
         request = SemanticRequest(
             session_id=self.model.session_id,
             system_prompt=(
@@ -145,7 +146,7 @@ class SemanticExtractor:
                     "doc_id": doc_id,
                     "doc_class": doc_class,
                     "language": language,
-                    "document_text_untrusted": text,
+                    "document_text_untrusted": prompt_text,
                 },
                 ensure_ascii=False,
             ),
@@ -286,6 +287,7 @@ class SemanticValidator:
         if self.model.session_id == extractor_session_id:
             raise ValueError("semantic extractor and validator require separate sessions")
         schema = self._schema(extractions)
+        prompt_text = schema.prepare_text(text)
         request = SemanticRequest(
             session_id=self.model.session_id,
             system_prompt=(
@@ -296,7 +298,7 @@ class SemanticValidator:
                 {
                     "doc_id": doc_id,
                     "language": language,
-                    "document_text_untrusted": text,
+                    "document_text_untrusted": prompt_text,
                     "candidate_rows": [
                         {
                             "extraction_id": row.extraction_id,

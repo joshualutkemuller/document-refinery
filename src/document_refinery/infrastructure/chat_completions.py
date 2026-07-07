@@ -46,6 +46,7 @@ class ChatCompletionsSemanticModel:
         timeout_seconds: float = 60.0,
         max_retries: int = 2,
         retry_base_delay_seconds: float = 1.0,
+        max_output_tokens: int | None = None,
     ) -> None:
         if not model:
             raise ValueError("a model name is required")
@@ -55,6 +56,8 @@ class ChatCompletionsSemanticModel:
             raise ValueError("max_retries must be non-negative")
         if retry_base_delay_seconds < 0:
             raise ValueError("retry_base_delay_seconds must be non-negative")
+        if max_output_tokens is not None and max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
         self._model = model
         self._provider = provider
         self._session_id = session_id
@@ -63,6 +66,7 @@ class ChatCompletionsSemanticModel:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self.retry_base_delay_seconds = retry_base_delay_seconds
+        self.max_output_tokens = max_output_tokens
 
     @property
     def session_id(self) -> str:
@@ -93,6 +97,8 @@ class ChatCompletionsSemanticModel:
             },
             "temperature": 0,
         }
+        if self.max_output_tokens is not None:
+            payload["max_tokens"] = self.max_output_tokens
         data = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -136,6 +142,7 @@ def build_ollama_model(
     base_url: str = DEFAULT_OLLAMA_URL,
     timeout_seconds: float = 60.0,
     max_retries: int = 2,
+    max_output_tokens: int | None = None,
 ) -> ChatCompletionsSemanticModel:
     """Local Ollama server; no API key, data stays on the machine."""
     return ChatCompletionsSemanticModel(
@@ -146,6 +153,7 @@ def build_ollama_model(
         api_key=None,
         timeout_seconds=timeout_seconds,
         max_retries=max_retries,
+        max_output_tokens=max_output_tokens,
     )
 
 
@@ -157,6 +165,7 @@ def build_openai_compatible_model(
     api_key_env: str = "OPENAI_COMPATIBLE_API_KEY",
     timeout_seconds: float = 60.0,
     max_retries: int = 2,
+    max_output_tokens: int | None = None,
 ) -> ChatCompletionsSemanticModel:
     """Generic third-party OpenAI-compatible endpoint (data leaves the machine)."""
     if not base_url:
@@ -172,6 +181,7 @@ def build_openai_compatible_model(
         api_key=api_key,
         timeout_seconds=timeout_seconds,
         max_retries=max_retries,
+        max_output_tokens=max_output_tokens,
     )
 
 

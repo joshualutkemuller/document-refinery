@@ -157,6 +157,14 @@ def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
         default=60.0,
     )
     parser.add_argument("--semantic-max-retries", type=int, default=2)
+    parser.add_argument(
+        "--semantic-max-output-tokens",
+        type=int,
+        help=(
+            "optional output token cap for chat-completions providers such as "
+            "ollama and openai-compatible"
+        ),
+    )
 
 
 def _add_storage_options(parser: argparse.ArgumentParser) -> None:
@@ -229,6 +237,7 @@ def main() -> int:
             semantic_constitution_version=args.semantic_constitution_version,
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
+            semantic_max_output_tokens=args.semantic_max_output_tokens,
             gold_store=args.gold_store,
             gold_uri=args.gold_uri,
         )
@@ -284,6 +293,7 @@ def main() -> int:
             semantic_constitution_version=args.semantic_constitution_version,
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
+            semantic_max_output_tokens=args.semantic_max_output_tokens,
             gold_store=args.gold_store,
             gold_uri=args.gold_uri,
         )
@@ -305,6 +315,7 @@ def _run_documents(
     semantic_constitution_version: str,
     semantic_timeout_seconds: float,
     semantic_max_retries: int,
+    semantic_max_output_tokens: int | None,
     gold_store: str = "jsonl",
     gold_uri: str | None = None,
 ) -> None:
@@ -317,6 +328,7 @@ def _run_documents(
         constitution_version=semantic_constitution_version,
         timeout_seconds=semantic_timeout_seconds,
         max_retries=semantic_max_retries,
+        max_output_tokens=semantic_max_output_tokens,
     )
     if semantic_provider == "openai-compatible":
         print(
@@ -521,6 +533,7 @@ def _build_semantic_backends(
     validator_model: str | None,
     timeout_seconds: float,
     max_retries: int,
+    max_output_tokens: int | None,
 ) -> tuple[str, str, SemanticModel, SemanticModel]:
     """Construct the two provider-specific model sessions (extractor, validator)."""
     if provider == "local":
@@ -555,10 +568,12 @@ def _build_semantic_backends(
             build_ollama_model(
                 model=extractor_model, session_id="ollama-extractor-session",
                 base_url=ollama_url, timeout_seconds=timeout_seconds, max_retries=max_retries,
+                max_output_tokens=max_output_tokens,
             ),
             build_ollama_model(
                 model=validator_model, session_id="ollama-validator-session",
                 base_url=ollama_url, timeout_seconds=timeout_seconds, max_retries=max_retries,
+                max_output_tokens=max_output_tokens,
             ),
         )
     # openai-compatible: third-party endpoint, data leaves the machine.
@@ -570,10 +585,12 @@ def _build_semantic_backends(
         build_openai_compatible_model(
             model=extractor_model, base_url=base_url, session_id="openai-compatible-extractor",
             timeout_seconds=timeout_seconds, max_retries=max_retries,
+            max_output_tokens=max_output_tokens,
         ),
         build_openai_compatible_model(
             model=validator_model, base_url=base_url, session_id="openai-compatible-validator",
             timeout_seconds=timeout_seconds, max_retries=max_retries,
+            max_output_tokens=max_output_tokens,
         ),
     )
 
@@ -587,6 +604,7 @@ def _build_semantic_components(
     constitution_version: str,
     timeout_seconds: float,
     max_retries: int,
+    max_output_tokens: int | None = None,
     base_url: str | None = None,
 ) -> tuple[SemanticExtractor | None, SemanticValidator | None]:
     if provider is None:
@@ -597,6 +615,8 @@ def _build_semantic_components(
         raise ValueError(f"unsupported semantic provider: {provider}")
     if max_retries < 0:
         raise ValueError("semantic max retries must be non-negative")
+    if max_output_tokens is not None and max_output_tokens <= 0:
+        raise ValueError("semantic max output tokens must be positive")
     extractor_model_name, validator_model_name, extractor_backend, validator_backend = (
         _build_semantic_backends(
             provider=provider,
@@ -605,6 +625,7 @@ def _build_semantic_components(
             validator_model=validator_model,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
+            max_output_tokens=max_output_tokens,
         )
     )
     extractor = SemanticExtractor(

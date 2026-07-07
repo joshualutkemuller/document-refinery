@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+
+
+def identity_text(text: str) -> str:
+    return text
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,3 +18,4 @@ class SemanticSchemaSpec:
     constitution: str
     schema_dictionary: str
     field_suffixes: frozenset[str]
+    prepare_text: Callable[[str], str] = identity_text

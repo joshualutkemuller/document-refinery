@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from document_refinery.semantic_schemas.base import SemanticSchemaSpec
 
 DOC_CLASS = "collateral_valuation_margin_table"
@@ -62,10 +64,63 @@ CONSTITUTION = (
     "collateral_value_pct when the table is stated as percent of market value; "
     "implied_haircut_pct may be extracted only when directly computed as "
     "100 - collateral_value_pct from the same source row. Keep securities valuation "
-    "rows and loan margin rows separate. Preserve original-language evidence, emit "
-    "explicit not_found fields for missing schema values, use numeric indexes for "
-    "repeated groups, and never emit system-controlled fields."
+    "rows and loan margin rows separate. The supplied document text may be a bounded "
+    "chunk; extract only rows present in that chunk. Preserve original-language "
+    "evidence, emit explicit not_found fields for missing schema values, use numeric "
+    "indexes for repeated groups, and never emit system-controlled fields."
 )
+
+
+def prepare_text(text: str) -> str:
+    """Return a compact securities-margin chunk for local/hosted LLM extraction.
+
+    Browser-saved versions of the Fed page contain navigation text and loan tables
+    that make local models wander. The source clauses in this chunk remain
+    verbatim substrings of the full document, so downstream lineage checks still
+    validate against the original extracted text.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    header = _header_lines(lines)
+    section = _securities_section(lines)
+    table_rows = [line for line in section if re.search(r"(?:\s+\d{2,3}){5}\s*$", line)]
+    if not table_rows:
+        return text
+    limited_rows = table_rows[:10]
+    return "\n".join(
+        (
+            "Collateral Valuation",
+            "Securities Valuation and Margins Table",
+            "Bounded extraction chunk: extract only the securities rows listed below.",
+            *header,
+            *limited_rows,
+        )
+    )
+
+
+def _header_lines(lines: list[str]) -> list[str]:
+    output: list[str] = []
+    for line in lines:
+        lowered = line.casefold()
+        if "last updated:" in lowered or "effective date:" in lowered:
+            output.append(line)
+        if len(output) >= 2:
+            break
+    return output
+
+
+def _securities_section(lines: list[str]) -> list[str]:
+    start = 0
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if "securities valuation and margins table" in line.casefold():
+            start = index
+            break
+    for index, line in enumerate(lines[start + 1 :], start=start + 1):
+        if "loan valuation and margins tables" in line.casefold():
+            end = index
+            break
+    return lines[start:end]
+
 
 SPEC = SemanticSchemaSpec(
     doc_class=DOC_CLASS,
@@ -74,4 +129,5 @@ SPEC = SemanticSchemaSpec(
     constitution=CONSTITUTION,
     schema_dictionary=SCHEMA_DICTIONARY,
     field_suffixes=FIELD_SUFFIXES,
+    prepare_text=prepare_text,
 )

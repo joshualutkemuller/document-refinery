@@ -18,6 +18,7 @@ from document_refinery.agents.semantic import (
 from document_refinery.application.pipeline import RefineryPipeline
 from document_refinery.domain.models import ValidatorStatus
 from document_refinery.infrastructure.tasks import TaskStatus
+from document_refinery.semantic_schemas import schemas as semantic_schemas
 
 
 def _assert_strict_mode_compatible(node: object) -> None:
@@ -201,6 +202,57 @@ def test_semantic_extractor_accepts_valuation_margin_schema() -> None:
     )
     assert result.rows[0].field_path == "valuation_margin[0].collateral_value_pct"
     assert result.rows[0].unit == "percent_of_market_value"
+
+
+def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
+    table_clause = "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    loan_clause = "Loan Valuation and Margins Tables should not be in the securities chunk."
+    full_text = "\n".join(
+        (
+            "Collateral Valuation",
+            "Last Updated: 7.01.2026",
+            "Securities Valuation and Margins Table",
+            table_clause,
+            "Loan Valuation and Margins Tables",
+            loan_clause,
+        )
+    )
+    payload = {
+        "extractions": [
+            {
+                "field_path": "valuation_margin[0].collateral_value_pct",
+                "raw_value": "99",
+                "normalized_value": "99",
+                "value_type": "percentage",
+                "unit": "percent_of_market_value",
+                "currency": None,
+                "source_clause": table_clause,
+                "source_locator": "page=1;table=securities;row=1",
+                "confidence": 0.88,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    extractor = SemanticExtractor(
+        model,
+        extractor_version="semantic-test-1.0.0",
+        schemas=semantic_schemas(),
+    )
+    extractor.extract(
+        doc_id="doc-fed",
+        doc_class="collateral_valuation_margin_table",
+        text=full_text,
+    )
+    prompt_payload = json.loads(model.requests[0].user_payload)
+    prompt_text = prompt_payload["document_text_untrusted"]
+    assert "Bounded extraction chunk" in prompt_text
+    assert table_clause in prompt_text
+    assert loan_clause not in prompt_text
 
 
 def test_semantic_validator_requires_separate_session() -> None:
