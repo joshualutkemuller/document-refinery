@@ -45,13 +45,25 @@ string-typed expected values) and reports how many owner-verified documents are
 still needed for the release gate (≥10). It exits non-zero on structural
 problems.
 
-## Scoring note
+## Scoring
 
-`document-refinery accuracy` currently scores with the **deterministic
-eligibility extractor**, which targets the narrow `collateral_eligibility_schedule`
-class (asset/haircut tables). This corpus targets the richer
-`collateral_rule_schedule` class, whose `rule[i].*` fields are extracted on the
-**semantic route**. Field-accuracy scoring for this class therefore depends on
-semantic-route scoring, which is not yet wired into the `accuracy` command —
-`corpus-check` is the immediate, honest intake gate. Wiring semantic-route
-accuracy scoring is the natural follow-up once the first documents are verified.
+By default `document-refinery accuracy` scores with the **deterministic
+eligibility extractor** (narrow `collateral_eligibility_schedule` class). This
+corpus targets the richer `collateral_rule_schedule` class, whose `rule[i].*`
+fields are produced on the **semantic route**, so score it with a semantic
+provider — each case is routed by its `doc_class`:
+
+```bash
+# Approved production provider (after verifying ZDR settings):
+export OPENAI_API_KEY=sk-...
+document-refinery accuracy --corpus examples/collateral_rule_corpus \
+  --semantic-provider openai \
+  --semantic-extractor-model gpt-5.5 \
+  --semantic-validator-model gpt-5.5
+```
+
+The offline `--semantic-provider local` heuristic only emits eligibility-shaped
+fields, so it is not a meaningful scorer for this class — use it to smoke-test
+the eligibility corpus, and a real model here. `corpus-check` remains the
+structural intake gate; the release gate still requires ≥10 owner-verified
+documents at ≥95% field accuracy.

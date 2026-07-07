@@ -559,12 +559,17 @@ still requires owner-verified examples and review-time evidence.
    release gate). A 10-document realistic-synthetic corpus ships in
    `examples/golden_corpus/` (98.9% field accuracy, gate correctly NOT READY
    until documents are owner-verified). Point `--corpus` at owner-verified real
-   documents to produce release evidence. **Intake + review-time harness
-   delivered:** `document-refinery corpus-check` validates an owner corpus
-   (ground-truth ↔ document consistency, owner-verified counts, release blockers)
-   before scoring, and `document-refinery review-time` reports measured owner
-   review time against the ≤15-minute exit target from durable per-review timing
-   captured by the `review` command.
+   documents to produce release evidence. The `accuracy` command scores the
+   **deterministic** eligibility route by default and the **semantic route** with
+   `--semantic-provider` (routing each case by its ground-truth `doc_class`), so
+   semantic-only classes such as `collateral_rule_schedule` are scorable against
+   a real model. **Intake + review-time harness delivered:**
+   `document-refinery corpus-check` validates an owner corpus (ground-truth ↔
+   document consistency, owner-verified counts, release blockers) before scoring,
+   and `document-refinery review-time` reports measured owner review time against
+   the ≤15-minute exit target from durable per-review timing captured by the
+   `review` command. A `collateral_rule_schedule` intake scaffold ships in
+   `examples/collateral_rule_corpus/` (owner-verified false, gate blocked).
 4. Feed every correction into a golden case or constitution rule. **Delivered:**
    `document-refinery distill` turns the correction log into constitution-rule
    proposals (repeated corrections) and golden-case proposals (every

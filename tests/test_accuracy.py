@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from document_refinery.cli import main
+from document_refinery.domain.models import SilverExtraction
 from document_refinery.quality.accuracy import GoldenCase, load_corpus, score_corpus
 
 _DOC = """Collateral Eligibility Schedule
@@ -79,6 +81,75 @@ def test_shipped_golden_corpus_is_measurable() -> None:
     # The known gaps are the weak fields.
     weak = {name for name, (c, t) in report.per_field.items() if c < t}
     assert weak == {"margin_type", "eligible", "currency_scope", "haircut_pct"}
+
+
+def test_score_corpus_routes_through_custom_row_provider(
+    extraction: Callable[..., SilverExtraction],
+) -> None:
+    case = GoldenCase(
+        case_id="c1",
+        text="US Treasury eligible with a 2% haircut.",
+        expected={"rule[0].haircut_pct": "2", "rule[0].fx_haircut_pct": "8"},
+        doc_class="collateral_rule_schedule",
+    )
+
+    def provider(scored: GoldenCase) -> tuple[SilverExtraction, ...]:
+        # The semantic route hands the case's doc_class to the scorer.
+        assert scored.doc_class == "collateral_rule_schedule"
+        return (
+            extraction(field_path="rule[0].haircut_pct", normalized_value="2"),
+            extraction(field_path="rule[0].fx_haircut_pct", normalized_value="7"),  # wrong
+        )
+
+    report = score_corpus((case,), row_provider=provider)
+    assert report.correct_fields == 1  # haircut matches, fx_haircut does not
+    assert report.total_fields == 2
+    assert any(m.field_path == "rule[0].fx_haircut_pct" for m in report.mismatches)
+
+
+def test_accuracy_cli_semantic_route_runs_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = (
+        Path(__file__).resolve().parents[1]
+        / "example_schedules"
+        / "Example6_synthetic-triparty-eligibility-profile.txt"
+    )
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "c1.txt").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    (corpus / "ground_truth.json").write_text(
+        json.dumps(
+            {
+                "c1": {
+                    "owner_verified": False,
+                    "doc_class": "collateral_eligibility_schedule",
+                    "expected": {"eligibility[0].eligible": "true"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "document-refinery",
+            "accuracy",
+            "--corpus",
+            str(corpus),
+            "--semantic-provider",
+            "local",
+            "--json",
+        ],
+    )
+    code = main()
+
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["document_count"] == 1
+    assert report["total_fields"] == 1
 
 
 def test_corpus_check_reports_structural_problems(
