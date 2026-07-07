@@ -47,7 +47,11 @@ from document_refinery.infrastructure.local_semantic import LocalHeuristicSemant
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
-from document_refinery.quality.accuracy import load_corpus, score_corpus
+from document_refinery.quality.accuracy import (
+    load_corpus,
+    score_corpus,
+    semantic_row_provider,
+)
 from document_refinery.quality.dashboard import render_dashboard
 from document_refinery.quality.regression import run_packaged_regression
 from document_refinery.quality.reporting import QualityReporter
@@ -125,6 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of *.txt schedules + ground_truth.json",
     )
     accuracy.add_argument("--json", action="store_true", dest="as_json")
+    accuracy.add_argument(
+        "--language",
+        default="und",
+        help="language tag passed to the semantic route when --semantic-provider is set",
+    )
+    _add_semantic_options(accuracy)
 
     benchmark = subcommands.add_parser(
         "benchmark",
@@ -536,7 +546,31 @@ def _run_accuracy(args: argparse.Namespace) -> int:
     if not (args.corpus / "ground_truth.json").exists():
         print(f"error: no ground_truth.json in {args.corpus}")
         return 2
-    report = score_corpus(load_corpus(args.corpus))
+    row_provider = None
+    if args.semantic_provider is not None:
+        extractor, validator = _build_semantic_components(
+            provider=args.semantic_provider,
+            base_url=args.semantic_base_url,
+            extractor_model=args.semantic_extractor_model,
+            validator_model=args.semantic_validator_model,
+            schema_version=args.semantic_schema_version,
+            constitution_version=args.semantic_constitution_version,
+            timeout_seconds=args.semantic_timeout_seconds,
+            max_retries=args.semantic_max_retries,
+            max_output_tokens=args.semantic_max_output_tokens,
+            chunk_concurrency=args.semantic_chunk_concurrency,
+        )
+        if extractor is None or validator is None:
+            print("error: semantic scoring requires a configured --semantic-provider")
+            return 2
+        if args.semantic_provider == "openai-compatible":
+            print(
+                "notice: corpus text will be sent to the configured endpoint; "
+                "retention/ZDR is the provider's responsibility.",
+                file=sys.stderr,
+            )
+        row_provider = semantic_row_provider(extractor, validator, language=args.language)
+    report = score_corpus(load_corpus(args.corpus), row_provider=row_provider)
     if args.as_json:
         print(json.dumps(report.to_dict(), indent=2))
         return 0

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +23,15 @@ from document_refinery.agents.eligibility import (
     EligibilityAdversarialValidator,
     EligibilityScheduleExtractor,
 )
+from document_refinery.agents.semantic import SemanticExtractor, SemanticValidator
+from document_refinery.domain.models import SilverExtraction
+
+DEFAULT_DOC_CLASS = "collateral_eligibility_schedule"
+
+# A row provider turns one golden case into the silver rows to be scored, so the
+# scoring math is identical whether rows come from the deterministic eligibility
+# route or the semantic route.
+RowProvider = Callable[["GoldenCase"], "tuple[SilverExtraction, ...]"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +41,7 @@ class GoldenCase:
     expected: dict[str, str]  # field_path -> human-correct normalized value
     owner_verified: bool = False
     title: str = ""
+    doc_class: str = DEFAULT_DOC_CLASS
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,9 +116,53 @@ class AccuracyReport:
         }
 
 
-def score_corpus(cases: tuple[GoldenCase, ...]) -> AccuracyReport:
+def deterministic_row_provider() -> RowProvider:
+    """Score with the deterministic eligibility extractor/validator (the default)."""
     extractor = EligibilityScheduleExtractor()
     validator = EligibilityAdversarialValidator()
+
+    def provide(case: GoldenCase) -> tuple[SilverExtraction, ...]:
+        return validator.validate(
+            text=case.text,
+            extractions=extractor.extract(doc_id=case.case_id, text=case.text),
+        )
+
+    return provide
+
+
+def semantic_row_provider(
+    extractor: SemanticExtractor,
+    validator: SemanticValidator,
+    *,
+    language: str = "und",
+) -> RowProvider:
+    """Score the semantic route: routes each case by its doc_class through the
+    configured extractor and an independent validator (same split as production).
+    """
+
+    def provide(case: GoldenCase) -> tuple[SilverExtraction, ...]:
+        extraction = extractor.extract(
+            doc_id=case.case_id,
+            doc_class=case.doc_class,
+            text=case.text,
+            language=language,
+        )
+        validation = validator.validate(
+            doc_id=case.case_id,
+            text=case.text,
+            extractions=extraction.rows,
+            extractor_session_id=extractor.model.session_id,
+            language=language,
+        )
+        return validation.rows
+
+    return provide
+
+
+def score_corpus(
+    cases: tuple[GoldenCase, ...], *, row_provider: RowProvider | None = None
+) -> AccuracyReport:
+    provide = row_provider or deterministic_row_provider()
 
     total = correct = found = correct_found = with_locator = disputes = 0
     per_field: dict[str, list[int]] = defaultdict(lambda: [0, 0])
@@ -118,10 +173,7 @@ def score_corpus(cases: tuple[GoldenCase, ...]) -> AccuracyReport:
     for case in cases:
         if case.owner_verified:
             verified_docs.add(case.case_id)
-        rows = validator.validate(
-            text=case.text,
-            extractions=extractor.extract(doc_id=case.case_id, text=case.text),
-        )
+        rows = provide(case)
         actual = {row.field_path: row.normalized_value for row in rows}
         located = {
             row.field_path
@@ -180,6 +232,7 @@ def load_corpus(directory: Path) -> tuple[GoldenCase, ...]:
                 expected={str(k): str(v) for k, v in meta["expected"].items()},
                 owner_verified=bool(meta.get("owner_verified", False)),
                 title=str(meta.get("title", "")),
+                doc_class=str(meta.get("doc_class", DEFAULT_DOC_CLASS)),
             )
         )
     return tuple(cases)
