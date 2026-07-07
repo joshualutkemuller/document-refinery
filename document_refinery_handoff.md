@@ -92,7 +92,10 @@ extraction.
 - No owner-verified ten-document golden set or measured review-time evidence.
 - Authenticated correction/dispute workflow exists as a terminal CLI baseline
   (interactive `review` command plus a read-only review packet and durable
-  correction log); no hosted/authenticated UI or automated distiller feedback yet.
+  correction log). The distiller now replays that log into owner-reviewable
+  constitution-rule and golden-case proposals (`document-refinery distill`); a
+  hosted/authenticated UI and auto-applied constitution/golden updates remain to
+  build (the owner still batch-approves every proposal).
 - No production object storage, managed Delta jobs, access controls, monitoring,
   or retry orchestration.
 - No full CSA economics gold schema (threshold, MTA, IA, rounding, interest,
@@ -546,8 +549,18 @@ still requires owner-verified examples and review-time evidence.
    release gate). A 10-document realistic-synthetic corpus ships in
    `examples/golden_corpus/` (98.9% field accuracy, gate correctly NOT READY
    until documents are owner-verified). Point `--corpus` at owner-verified real
-   documents to produce release evidence.
-4. Feed every correction into a golden case or constitution rule.
+   documents to produce release evidence. **Intake + review-time harness
+   delivered:** `document-refinery corpus-check` validates an owner corpus
+   (ground-truth ↔ document consistency, owner-verified counts, release blockers)
+   before scoring, and `document-refinery review-time` reports measured owner
+   review time against the ≤15-minute exit target from durable per-review timing
+   captured by the `review` command.
+4. Feed every correction into a golden case or constitution rule. **Delivered:**
+   `document-refinery distill` turns the correction log into constitution-rule
+   proposals (repeated corrections) and golden-case proposals (every
+   owner-decided value, emitted as a ground-truth fragment via
+   `--ground-truth-out`), with disputes surfaced as unresolved. Owner batch-
+   approves; nothing is auto-applied.
 5. Enforce Gate M against deterministic and semantic regression corpora.
 6. Expand fast local schemas only when a document family has stable structure;
    otherwise add semantic schemas and keep the owner in Gate A.

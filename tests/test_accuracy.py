@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import pytest
+
+from document_refinery.cli import main
 from document_refinery.quality.accuracy import GoldenCase, load_corpus, score_corpus
 
 _DOC = """Collateral Eligibility Schedule
@@ -75,3 +79,61 @@ def test_shipped_golden_corpus_is_measurable() -> None:
     # The known gaps are the weak fields.
     weak = {name for name, (c, t) in report.per_field.items() if c < t}
     assert weak == {"margin_type", "eligible", "currency_scope", "haircut_pct"}
+
+
+def test_corpus_check_reports_structural_problems(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "c1.txt").write_text(_DOC, encoding="utf-8")
+    # c2 has ground truth but no .txt; orphan.txt has a file but no ground truth.
+    (corpus / "orphan.txt").write_text(_DOC, encoding="utf-8")
+    (corpus / "ground_truth.json").write_text(
+        json.dumps(
+            {
+                "c1": {"owner_verified": True, "expected": _EXPECTED},
+                "c2": {"owner_verified": True, "expected": _EXPECTED},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["document-refinery", "corpus-check", "--corpus", str(corpus), "--json"],
+    )
+    code = main()
+
+    assert code == 1  # structural problems present
+    report = json.loads(capsys.readouterr().out)
+    assert report["document_count"] == 2
+    assert report["owner_verified_document_count"] == 2
+    assert any("c2" in p for p in report["problems"])
+    assert any("orphan" in p for p in report["problems"])
+    assert "8 more document(s)" in report["release_blockers"]
+
+
+def test_corpus_check_passes_on_valid_corpus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "c1.txt").write_text(_DOC, encoding="utf-8")
+    (corpus / "ground_truth.json").write_text(
+        json.dumps({"c1": {"owner_verified": False, "expected": _EXPECTED}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["document-refinery", "corpus-check", "--corpus", str(corpus), "--json"],
+    )
+    code = main()
+
+    assert code == 0  # structurally valid even if not yet release-ready
+    report = json.loads(capsys.readouterr().out)
+    assert report["structurally_valid"] is True
+    assert report["problems"] == []

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
@@ -165,6 +166,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     distill.add_argument("--json", action="store_true", dest="as_json")
 
+    review_time = subcommands.add_parser(
+        "review-time",
+        help="report measured owner review time against the 15-minute N4 target",
+    )
+    review_time.add_argument("--workspace", type=Path, required=True)
+    review_time.add_argument("--json", action="store_true", dest="as_json")
+
+    corpus_check = subcommands.add_parser(
+        "corpus-check",
+        help="validate an owner-verified accuracy corpus and report release readiness",
+    )
+    corpus_check.add_argument(
+        "--corpus",
+        type=Path,
+        default=Path("examples/golden_corpus"),
+        help="directory of *.txt schedules + ground_truth.json",
+    )
+    corpus_check.add_argument("--json", action="store_true", dest="as_json")
+
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
     watch.add_argument("--workspace", type=Path, required=True)
@@ -309,6 +329,10 @@ def main() -> int:
         return _run_benchmark(args)
     elif args.command == "distill":
         return _run_distill(args)
+    elif args.command == "review-time":
+        return _run_review_time(args)
+    elif args.command == "corpus-check":
+        return _run_corpus_check(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -478,10 +502,12 @@ def _run_review(args: argparse.Namespace) -> int:
         if not args.reviewer:
             print("error: --reviewer is required to apply review actions")
             return 2
+        review_seconds: float | None = None
         if args.corrections is not None:
-            requests = _load_corrections(args.corrections)
+            requests, review_seconds = _load_corrections(args.corrections)
         else:
             rows = pipeline.review_rows(args.doc_id)
+            started = time.perf_counter()
             requests = build_review_requests(
                 rows,
                 prompt=input,
@@ -489,6 +515,8 @@ def _run_review(args: argparse.Namespace) -> int:
                 pending_only=args.pending_only,
                 suggestions=pipeline.memory_suggestions(rows),
             )
+            # Wall-clock of the actual interactive walk — the N4 review-time metric.
+            review_seconds = time.perf_counter() - started
         if not requests:
             print(json.dumps({"doc_id": args.doc_id, "applied": 0, "actions": {}}))
             return 0
@@ -496,6 +524,7 @@ def _run_review(args: argparse.Namespace) -> int:
             args.doc_id,
             requests=requests,
             reviewer=args.reviewer,
+            review_seconds=review_seconds,
         )
         print(json.dumps(_review_summary(args.doc_id, outcome)))
         return 0
@@ -630,6 +659,98 @@ def _run_distill(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_review_time(args: argparse.Namespace) -> int:
+    pipeline = RefineryPipeline(args.workspace)
+    try:
+        timings, summary = pipeline.review_timings()
+    finally:
+        pipeline.close()
+    if args.as_json:
+        print(
+            json.dumps(
+                {
+                    "summary": summary.to_dict(),
+                    "reviews": [timing.to_json() for timing in timings],
+                },
+                indent=2,
+            )
+        )
+        return 0
+    if summary.count == 0:
+        print("No review-time measurements yet. Run `review` to record them.")
+        return 0
+    print(
+        f"Review time across {summary.count} review(s): "
+        f"median {summary.median_minutes:.1f}m, mean {summary.mean_minutes:.1f}m, "
+        f"max {summary.max_minutes:.1f}m (target ≤{summary.target_minutes:.0f}m)."
+    )
+    print(f"Within target: {summary.within_target_count}/{summary.count}")
+    over = [t for t in timings if t.minutes > summary.target_minutes]
+    for timing in over:
+        print(f"  OVER: {timing.doc_id} took {timing.minutes:.1f}m ({timing.action_count} actions)")
+    gate = "MEETS" if summary.meets_target else "BELOW"
+    print(f"N4 review-time gate: {gate} target.")
+    return 0
+
+
+def _run_corpus_check(args: argparse.Namespace) -> int:
+    ground_truth_path = args.corpus / "ground_truth.json"
+    if not ground_truth_path.exists():
+        print(f"error: no ground_truth.json in {args.corpus}")
+        return 2
+    ground_truth = json.loads(ground_truth_path.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    total = owner_verified = 0
+    for case_id, meta in sorted(ground_truth.items()):
+        total += 1
+        if not (args.corpus / f"{case_id}.txt").exists():
+            problems.append(f"{case_id}: missing {case_id}.txt")
+        expected = meta.get("expected") if isinstance(meta, dict) else None
+        if not isinstance(expected, dict) or not expected:
+            problems.append(f"{case_id}: empty or missing 'expected' block")
+        elif any(not isinstance(v, str) for v in expected.values()):
+            problems.append(f"{case_id}: all expected values must be strings")
+        if isinstance(meta, dict) and bool(meta.get("owner_verified", False)):
+            owner_verified += 1
+    orphans = sorted(
+        path.stem
+        for path in args.corpus.glob("*.txt")
+        if path.stem not in ground_truth
+    )
+    for orphan in orphans:
+        problems.append(f"{orphan}.txt: no ground_truth entry")
+
+    needs = []
+    if total < 10:
+        needs.append(f"{10 - total} more document(s)")
+    if owner_verified < 10:
+        needs.append(f"{10 - owner_verified} more owner-verified document(s)")
+    report = {
+        "corpus": str(args.corpus),
+        "document_count": total,
+        "owner_verified_document_count": owner_verified,
+        "problems": problems,
+        "release_blockers": needs,
+        "structurally_valid": not problems,
+    }
+    if args.as_json:
+        print(json.dumps(report, indent=2))
+        return 0 if not problems else 1
+    print(f"Corpus: {args.corpus}")
+    print(f"Documents: {total} ({owner_verified} owner-verified)")
+    if problems:
+        print(f"Structural problems ({len(problems)}):")
+        for problem in problems:
+            print(f"  - {problem}")
+    else:
+        print("Structure: OK")
+    if needs:
+        print("Release gate still needs: " + ", ".join(needs))
+    else:
+        print("Release gate document counts satisfied (run `accuracy` for the score).")
+    return 0 if not problems else 1
+
+
 def _run_memory(args: argparse.Namespace) -> int:
     store = CorrectionMemoryStore(args.workspace / "memory" / "corrections_memory.jsonl")
     entries = store.load().entries()
@@ -661,9 +782,14 @@ def _review_summary(doc_id: str, outcome: CorrectionOutcome) -> dict[str, object
     return {"doc_id": doc_id, "applied": len(outcome.records), "actions": counts}
 
 
-def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
+def _load_corrections(
+    path: Path,
+) -> tuple[tuple[CorrectionRequest, ...], float | None]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     entries = payload.get("corrections") if isinstance(payload, dict) else payload
+    review_seconds = (
+        payload.get("review_seconds") if isinstance(payload, dict) else None
+    )
     if not isinstance(entries, list) or not entries:
         raise ValueError("corrections file must contain a non-empty 'corrections' list")
     requests: list[CorrectionRequest] = []
@@ -679,7 +805,7 @@ def _load_corrections(path: Path) -> tuple[CorrectionRequest, ...]:
                 note=None if entry.get("note") is None else str(entry["note"]),
             )
         )
-    return tuple(requests)
+    return tuple(requests), (None if review_seconds is None else float(review_seconds))
 
 
 def _build_semantic_backends(
