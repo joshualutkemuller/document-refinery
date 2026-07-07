@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
@@ -16,6 +17,7 @@ from document_refinery.domain.models import (
     ValueType,
 )
 from document_refinery.semantic_schemas import DEFAULT_SCHEMA, SemanticSchemaSpec, get_schema
+from document_refinery.semantic_schemas.base import SemanticTextChunk
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +79,11 @@ class SemanticCallRecord:
 @dataclass(frozen=True, slots=True)
 class SemanticExtractionResult:
     rows: tuple[SilverExtraction, ...]
-    call: SemanticCallRecord
+    calls: tuple[SemanticCallRecord, ...]
+
+    @property
+    def call(self) -> SemanticCallRecord:
+        return self.calls[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,9 +118,13 @@ class SemanticExtractor:
         constitution_version: str | None = None,
         extractor_version: str,
         schemas: tuple[SemanticSchemaSpec, ...] | None = None,
+        chunk_concurrency: int = 1,
     ) -> None:
+        if chunk_concurrency <= 0:
+            raise ValueError("chunk_concurrency must be positive")
         self.model = model
         self.extractor_version = extractor_version
+        self.chunk_concurrency = chunk_concurrency
         self._schemas = _schema_map(
             schemas,
             constitution=constitution,
@@ -132,7 +142,60 @@ class SemanticExtractor:
         language: str = "und",
     ) -> SemanticExtractionResult:
         schema = self._schema(doc_class)
-        prompt_text = schema.prepare_text(text)
+        chunks = _schema_chunks(schema, text)
+        if len(chunks) == 1 or self.chunk_concurrency == 1:
+            chunk_results = tuple(
+                self._extract_chunk(
+                    doc_id=doc_id,
+                    doc_class=doc_class,
+                    text=text,
+                    language=language,
+                    schema=schema,
+                    chunk=chunk,
+                    chunk_index=index,
+                    chunk_count=len(chunks),
+                )
+                for index, chunk in enumerate(chunks)
+            )
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(self.chunk_concurrency, len(chunks))
+            ) as executor:
+                chunk_results = tuple(
+                    executor.map(
+                        lambda item: self._extract_chunk(
+                            doc_id=doc_id,
+                            doc_class=doc_class,
+                            text=text,
+                            language=language,
+                            schema=schema,
+                            chunk=item[1],
+                            chunk_index=item[0],
+                            chunk_count=len(chunks),
+                        ),
+                        enumerate(chunks),
+                    )
+                )
+        rows = tuple(row for result in chunk_results for row in result.rows)
+        calls = tuple(call for result in chunk_results for call in result.calls)
+        paths = [row.field_path for row in rows]
+        if len(paths) != len(set(paths)):
+            raise ValueError("semantic response contains duplicate field paths")
+        return SemanticExtractionResult(rows=rows, calls=calls)
+
+    def _extract_chunk(
+        self,
+        *,
+        doc_id: str,
+        doc_class: str,
+        text: str,
+        language: str,
+        schema: SemanticSchemaSpec,
+        chunk: SemanticTextChunk,
+        chunk_index: int,
+        chunk_count: int,
+    ) -> SemanticExtractionResult:
+        prompt_text = chunk.text
         request = SemanticRequest(
             session_id=self.model.session_id,
             system_prompt=(
@@ -147,6 +210,10 @@ class SemanticExtractor:
                     "doc_id": doc_id,
                     "doc_class": doc_class,
                     "language": language,
+                    "chunk_id": chunk.chunk_id,
+                    "chunk_index": chunk_index,
+                    "chunk_count": chunk_count,
+                    "field_index_offset": chunk.field_index_offset,
                     "document_text_untrusted": prompt_text,
                 },
                 ensure_ascii=False,
@@ -168,23 +235,23 @@ class SemanticExtractor:
                 schema=schema,
                 text=text,
                 prompt_text=prompt_text,
+                field_index_offset=chunk.field_index_offset,
             )
             for item in raw_rows
         )
-        paths = [row.field_path for row in rows]
-        if len(paths) != len(set(paths)):
-            raise ValueError("semantic response contains duplicate field paths")
         return SemanticExtractionResult(
             rows=rows,
-            call=_call_record(
-                doc_id=doc_id,
-                role="extractor",
-                model=self.model,
-                request=request,
-                response=response,
-                schema_version=schema.schema_version,
-                constitution_version=schema.constitution_version,
-                language=language,
+            calls=(
+                _call_record(
+                    doc_id=doc_id,
+                    role="extractor",
+                    model=self.model,
+                    request=request,
+                    response=response,
+                    schema_version=schema.schema_version,
+                    constitution_version=schema.constitution_version,
+                    language=language,
+                ),
             ),
         )
 
@@ -200,6 +267,7 @@ class SemanticExtractor:
         schema: SemanticSchemaSpec,
         text: str,
         prompt_text: str,
+        field_index_offset: int = 0,
     ) -> SilverExtraction:
         if not isinstance(value, dict):
             raise ValueError("each semantic extraction must be an object")
@@ -208,8 +276,9 @@ class SemanticExtractor:
             raise ValueError(
                 f"model attempted unsupported extraction fields: {sorted(unexpected)}"
             )
-        field_path = _required_string(value, "field_path")
-        suffix = field_path.rsplit(".", 1)[-1]
+        model_field_path = _required_string(value, "field_path")
+        field_path = _offset_field_path(model_field_path, field_index_offset)
+        suffix = model_field_path.rsplit(".", 1)[-1]
         if suffix not in schema.field_suffixes:
             raise ValueError(f"field path is outside the canonical schema: {field_path}")
         value_type = ValueType(_required_string(value, "value_type"))
@@ -218,6 +287,7 @@ class SemanticExtractor:
         if value_type is not ValueType.NOT_FOUND and source_clause not in text:
             repaired_source_clause = _repair_valuation_margin_source_clause(
                 field_path=field_path,
+                model_field_path=model_field_path,
                 source_locator=source_locator,
                 text=text,
                 prompt_text=prompt_text,
@@ -470,9 +540,33 @@ def _schema_map(
     }
 
 
+def _schema_chunks(
+    schema: SemanticSchemaSpec,
+    text: str,
+) -> tuple[SemanticTextChunk, ...]:
+    if schema.chunk_text is None:
+        return (SemanticTextChunk(text=schema.prepare_text(text)),)
+    chunks = schema.chunk_text(text)
+    if not chunks:
+        raise ValueError("semantic schema returned no text chunks")
+    return chunks
+
+
+def _offset_field_path(field_path: str, offset: int) -> str:
+    if offset == 0:
+        return field_path
+    return re.sub(
+        r"(\w+)\[(\d+)\]",
+        lambda match: f"{match.group(1)}[{int(match.group(2)) + offset}]",
+        field_path,
+        count=1,
+    )
+
+
 def _repair_valuation_margin_source_clause(
     *,
     field_path: str,
+    model_field_path: str,
     source_locator: str,
     text: str,
     prompt_text: str,
@@ -491,7 +585,7 @@ def _repair_valuation_margin_source_clause(
             candidate = prompt_lines[line_index]
             if _is_verbatim_valuation_source_row(candidate, text):
                 return candidate
-    group_match = re.search(r"valuation_margin\[(\d+)\]", field_path)
+    group_match = re.search(r"valuation_margin\[(\d+)\]", model_field_path)
     if group_match is None:
         return None
     source_rows = [

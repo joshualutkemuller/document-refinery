@@ -146,7 +146,7 @@ class RefineryPipeline:
             validated = semantic_validation.rows
             self.semantic_calls.write(
                 document.doc_id,
-                (semantic_extraction.call, semantic_validation.call),
+                (*semantic_extraction.calls, semantic_validation.call),
             )
         elif classification.profile == "normalized":
             extracted = self.extractor.extract(

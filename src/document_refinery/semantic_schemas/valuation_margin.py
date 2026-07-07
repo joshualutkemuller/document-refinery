@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from document_refinery.semantic_schemas.base import SemanticSchemaSpec
+from document_refinery.semantic_schemas.base import SemanticSchemaSpec, SemanticTextChunk
 
 DOC_CLASS = "collateral_valuation_margin_table"
 MAX_SECURITIES_SOURCE_ROWS = 2
@@ -102,6 +102,32 @@ def prepare_text(text: str) -> str:
     )
 
 
+def chunk_text(text: str) -> tuple[SemanticTextChunk, ...]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    section = _securities_section(lines)
+    table_rows = [line for line in section if re.search(r"(?:\s+\d{2,3}){5}\s*$", line)]
+    if not table_rows:
+        return (SemanticTextChunk(text=prepare_text(text)),)
+    chunks: list[SemanticTextChunk] = []
+    for row_index, row in enumerate(table_rows[:MAX_SECURITIES_SOURCE_ROWS]):
+        chunks.append(
+            SemanticTextChunk(
+                text="\n".join(
+                    (
+                        "Collateral Valuation",
+                        "Securities Valuation and Margins Table",
+                        "Bounded extraction chunk: extract exactly the five duration "
+                        "groups from this securities source row.",
+                        row,
+                    )
+                ),
+                chunk_id=f"securities-row-{row_index + 1}",
+                field_index_offset=row_index * 5,
+            )
+        )
+    return tuple(chunks)
+
+
 def _header_lines(lines: list[str]) -> list[str]:
     output: list[str] = []
     for line in lines:
@@ -135,4 +161,5 @@ SPEC = SemanticSchemaSpec(
     schema_dictionary=SCHEMA_DICTIONARY,
     field_suffixes=FIELD_SUFFIXES,
     prepare_text=prepare_text,
+    chunk_text=chunk_text,
 )

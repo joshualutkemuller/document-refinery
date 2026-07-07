@@ -254,41 +254,49 @@ def test_valuation_margin_schema_prepares_bounded_prompt_text() -> None:
         doc_class="collateral_valuation_margin_table",
         text=full_text,
     )
-    prompt_payload = json.loads(model.requests[0].user_payload)
-    prompt_text = prompt_payload["document_text_untrusted"]
-    assert "Bounded extraction chunk" in prompt_text
-    assert "Duration buckets for each row's five percentages" not in prompt_text
+    assert len(model.requests) == 2
+    first_prompt_payload = json.loads(model.requests[0].user_payload)
+    second_prompt_payload = json.loads(model.requests[1].user_payload)
+    first_prompt_text = first_prompt_payload["document_text_untrusted"]
+    second_prompt_text = second_prompt_payload["document_text_untrusted"]
+    assert first_prompt_payload["chunk_id"] == "securities-row-1"
+    assert first_prompt_payload["field_index_offset"] == 0
+    assert second_prompt_payload["chunk_id"] == "securities-row-2"
+    assert second_prompt_payload["field_index_offset"] == 5
+    assert "Bounded extraction chunk" in first_prompt_text
+    assert "Duration buckets for each row's five percentages" not in first_prompt_text
+    assert "Duration buckets for each row's five percentages" not in second_prompt_text
     assert "Duration buckets for each row's five percentages" in model.requests[0].system_prompt
-    assert first_table_clause in prompt_text
-    assert second_table_clause in prompt_text
-    assert third_table_clause not in prompt_text
-    assert loan_clause not in prompt_text
+    assert first_table_clause in first_prompt_text
+    assert second_table_clause not in first_prompt_text
+    assert second_table_clause in second_prompt_text
+    assert first_table_clause not in second_prompt_text
+    assert third_table_clause not in first_prompt_text
+    assert third_table_clause not in second_prompt_text
+    assert loan_clause not in first_prompt_text
+    assert loan_clause not in second_prompt_text
 
 
 def test_valuation_margin_extractor_repairs_prompt_line_source_clause() -> None:
-    first_table_clause = (
-        "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
-    )
-    second_table_clause = "STRIPS 96 96 96 96 94"
+    table_clause = "STRIPS 96 96 96 96 94"
     full_text = "\n".join(
         (
             "Collateral Valuation",
             "Securities Valuation and Margins Table",
-            first_table_clause,
-            second_table_clause,
+            table_clause,
         )
     )
     payload = {
         "extractions": [
             {
-                "field_path": "valuation_margin[5].asset_category",
+                "field_path": "valuation_margin[0].asset_category",
                 "raw_value": "STRIPS",
                 "normalized_value": "STRIPS",
                 "value_type": "string",
                 "unit": None,
                 "currency": None,
                 "source_clause": "Treasury STRIPS 96 96 96 96 94",
-                "source_locator": "document_text_untrusted: line 5",
+                "source_locator": "document_text_untrusted: line 4",
                 "confidence": 0.88,
                 "ambiguity_flag": False,
                 "ambiguity_note": None,
@@ -311,10 +319,10 @@ def test_valuation_margin_extractor_repairs_prompt_line_source_clause() -> None:
         text=full_text,
     )
 
-    assert result.rows[0].source_clause == second_table_clause
+    assert result.rows[0].source_clause == table_clause
 
 
-def test_valuation_margin_extractor_repairs_source_clause_from_group_index() -> None:
+def test_valuation_margin_extractor_chunks_offsets_and_repairs_by_group_index() -> None:
     first_table_clause = (
         "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
     )
@@ -327,26 +335,42 @@ def test_valuation_margin_extractor_repairs_source_clause_from_group_index() -> 
             second_table_clause,
         )
     )
-    payload = {
-        "extractions": [
+
+    def handler(request: SemanticRequest) -> str:
+        payload = json.loads(request.user_payload)
+        source_clause = (
+            first_table_clause
+            if payload["chunk_id"] == "securities-row-1"
+            else "Treasury STRIPS 96 96 96 96 94"
+        )
+        raw_value = (
+            "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed"
+            if payload["chunk_id"] == "securities-row-1"
+            else "STRIPS"
+        )
+        return json.dumps(
             {
-                "field_path": "valuation_margin[5].asset_category",
-                "raw_value": "STRIPS",
-                "normalized_value": "STRIPS",
-                "value_type": "string",
-                "unit": None,
-                "currency": None,
-                "source_clause": "Treasury STRIPS 96 96 96 96 94",
-                "source_locator": "row=2",
-                "confidence": 0.88,
-                "ambiguity_flag": False,
-                "ambiguity_note": None,
+                "extractions": [
+                    {
+                        "field_path": "valuation_margin[0].asset_category",
+                        "raw_value": raw_value,
+                        "normalized_value": raw_value,
+                        "value_type": "string",
+                        "unit": None,
+                        "currency": None,
+                        "source_clause": source_clause,
+                        "source_locator": "row=1",
+                        "confidence": 0.88,
+                        "ambiguity_flag": False,
+                        "ambiguity_note": None,
+                    }
+                ]
             }
-        ]
-    }
+        )
+
     model = ScriptedModel(
         session_id="extractor-session",
-        handler=lambda _: json.dumps(payload),
+        handler=handler,
     )
     extractor = SemanticExtractor(
         model,
@@ -360,7 +384,12 @@ def test_valuation_margin_extractor_repairs_source_clause_from_group_index() -> 
         text=full_text,
     )
 
-    assert result.rows[0].source_clause == second_table_clause
+    assert [row.field_path for row in result.rows] == [
+        "valuation_margin[0].asset_category",
+        "valuation_margin[5].asset_category",
+    ]
+    assert result.rows[1].source_clause == second_table_clause
+    assert len(result.calls) == 2
 
 
 def test_semantic_validator_requires_separate_session() -> None:

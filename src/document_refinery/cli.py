@@ -165,6 +165,12 @@ def _add_semantic_options(parser: argparse.ArgumentParser) -> None:
             "ollama and openai-compatible"
         ),
     )
+    parser.add_argument(
+        "--semantic-chunk-concurrency",
+        type=int,
+        default=1,
+        help="maximum parallel semantic extraction chunks per document",
+    )
 
 
 def _add_storage_options(parser: argparse.ArgumentParser) -> None:
@@ -238,6 +244,7 @@ def main() -> int:
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
             semantic_max_output_tokens=args.semantic_max_output_tokens,
+            semantic_chunk_concurrency=args.semantic_chunk_concurrency,
             gold_store=args.gold_store,
             gold_uri=args.gold_uri,
         )
@@ -294,6 +301,7 @@ def main() -> int:
             semantic_timeout_seconds=args.semantic_timeout_seconds,
             semantic_max_retries=args.semantic_max_retries,
             semantic_max_output_tokens=args.semantic_max_output_tokens,
+            semantic_chunk_concurrency=args.semantic_chunk_concurrency,
             gold_store=args.gold_store,
             gold_uri=args.gold_uri,
         )
@@ -316,6 +324,7 @@ def _run_documents(
     semantic_timeout_seconds: float,
     semantic_max_retries: int,
     semantic_max_output_tokens: int | None,
+    semantic_chunk_concurrency: int,
     gold_store: str = "jsonl",
     gold_uri: str | None = None,
 ) -> None:
@@ -329,6 +338,7 @@ def _run_documents(
         timeout_seconds=semantic_timeout_seconds,
         max_retries=semantic_max_retries,
         max_output_tokens=semantic_max_output_tokens,
+        chunk_concurrency=semantic_chunk_concurrency,
     )
     if semantic_provider == "openai-compatible":
         print(
@@ -605,6 +615,7 @@ def _build_semantic_components(
     timeout_seconds: float,
     max_retries: int,
     max_output_tokens: int | None = None,
+    chunk_concurrency: int = 1,
     base_url: str | None = None,
 ) -> tuple[SemanticExtractor | None, SemanticValidator | None]:
     if provider is None:
@@ -617,6 +628,8 @@ def _build_semantic_components(
         raise ValueError("semantic max retries must be non-negative")
     if max_output_tokens is not None and max_output_tokens <= 0:
         raise ValueError("semantic max output tokens must be positive")
+    if chunk_concurrency <= 0:
+        raise ValueError("semantic chunk concurrency must be positive")
     extractor_model_name, validator_model_name, extractor_backend, validator_backend = (
         _build_semantic_backends(
             provider=provider,
@@ -632,6 +645,7 @@ def _build_semantic_components(
         extractor_backend,
         extractor_version=f"{provider}-{extractor_model_name}-{constitution_version}",
         schemas=semantic_schemas(),
+        chunk_concurrency=chunk_concurrency,
     )
     validator = SemanticValidator(
         validator_backend,
