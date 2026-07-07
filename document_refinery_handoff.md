@@ -276,16 +276,25 @@ Current schema locations:
   - `eligibility.py`: collateral eligibility semantic target (asset/haircut table).
   - `valuation_margin.py`: Federal Reserve collateral valuation/margins schema,
     including securities-row chunking.
-  - `collateral_rule_schedule.py`: **fallback rule-engine schema** for rich
-    negotiated dealer CSAs that exceed the eligibility table (issuer/country/
-    rating bands, maturity bands, FX haircuts, valuation percentages, layered
-    issuer/asset-class limits, wrong-way-risk, settlement/custodian, dual
-    regulatory/internal eligibility, priority score, and document-level CSA
-    economics). Derived from `docs/real-world-collateral-schedule-examples.md`.
-    Versioned `0.1.0`: a template pending its own owner-verified golden set, a
-    named consumer (the collateral optimizer), and Gate M/Gate S approval before
-    production (Locked Decision 6). Silver-only like every schema; full CSA
-    economics gold stays Milestone N5.
+  - `collateral_rule_schedule.py`: **fallback rule-engine schema** (v0.3.0) for
+    rich negotiated dealer CSAs **and CCP/clearing-house schedules** (CME, ICE,
+    LCH) that exceed the eligibility table: issuer/country/rating bands, maturity
+    bands, FX haircuts, valuation percentages, wrong-way-risk, settlement/
+    custodian, clearing-house context, account-scoped + dual regulatory/internal
+    eligibility, priority score, document-level CSA economics, plus a general
+    `limit[i]` sub-model (sector/credit-quality/asset-type/issuer/country/currency
+    caps, absolute-$ or %, market vs post-haircut basis, various aggregations,
+    value-scoped). Derived from `docs/real-world-collateral-schedule-examples.md`
+    and `docs/additional-real-world-collateral-optimizer-references.md`.
+  - `margin_requirement.py`: **demand-side sibling** (SIMM/IM/VM required amounts
+    per counterparty/netting set — what the optimizer must satisfy).
+  - `margin_operations.py`: **operational sibling** (`collateral_margin_operation`
+    — margin calls, posted/eligible assets, substitutions, disputes, settlement
+    status, inventory source).
+  - The rule schema and both siblings are `0.x` templates pending their own
+    owner-verified golden sets, named consumers (the collateral optimizer), and
+    Gate M/Gate S approval before production (Locked Decision 6). Silver-only like
+    every schema; full CSA economics gold stays Milestone N5.
   - `base.py`: `SemanticSchemaSpec` and `SemanticTextChunk`.
   - `registry.py`: runtime schema registry.
 - Fast deterministic public profiles:
@@ -599,6 +608,16 @@ review time, no deterministic regression, and explicit owner release approval.
    tasks/audits remain local pending the same treatment.
 2. Add canonical `gold_csa_terms` fields for threshold, MTA, IA, rounding,
    eligible currencies, interest, dispute timing, custody, and reuse rights.
+   **Gate-S limits table delivered (engineering):** `gold_collateral_limits`
+   (`sql/005_collateral_limits.sql`, domain `GoldCollateralLimit`, and
+   `application/limit_promotion.py`) promotes validated `limit[i].*` silver rows
+   from `collateral_rule_schedule` into canonical bitemporal portfolio-limit
+   records — dimension, scoped value, absolute-or-percent value with basis and
+   aggregation, schedule identity, and silver lineage. Promotion guardrails
+   enforce percent∈[0,100], absolute⇒currency, and one document per record.
+   Landing behind Gate S; pending owner-verified golden cases and Gate S sign-off
+   before production, and not yet wired to the live approval flow (the
+   rule-schedule class is a 0.x template).
 3. Add schema migrations through Gate S and owner-verified CSA golden cases.
 4. Add operational access control, encryption, secrets management, monitoring,
    retries, and recovery procedures.

@@ -14,9 +14,34 @@ Current semantic schemas:
 | --- | --- | --- |
 | `eligibility.py` | `collateral_eligibility_schedule` | Unknown CSA/triparty-style eligibility schedules (asset/haircut tables) |
 | `valuation_margin.py` | `collateral_valuation_margin_table` | Federal Reserve collateral valuation and margins tables |
-| `collateral_rule_schedule.py` | `collateral_rule_schedule` | **Fallback** rule-engine schema for rich negotiated dealer CSAs that exceed the eligibility table (issuer/country/rating bands, maturity bands, FX haircuts, valuation %, layered issuer/asset-class limits, wrong-way-risk, settlement/custodian, dual regulatory/internal eligibility, priority score, CSA economics) |
+| `collateral_rule_schedule.py` | `collateral_rule_schedule` | **Fallback** rule-engine schema for rich negotiated dealer CSAs **and CCP/clearing-house schedules** (CME, ICE, LCH): issuer/country/rating bands, maturity bands, FX haircuts, valuation %, clearing-house context, account-scoped + dual regulatory/internal eligibility, priority score, CSA economics, plus a general **limit[i] sub-model** (sector/credit-quality/asset-type/issuer/country/currency caps, absolute-$ or %, market vs post-haircut basis, various aggregations, value-scoped) |
+| `margin_requirement.py` | `margin_requirement` | **Demand side** (sibling): SIMM/IM/VM required amounts per counterparty/netting set — what the optimizer must satisfy |
+| `margin_operations.py` | `collateral_margin_operation` | **Operational side** (sibling): margin calls, posted/eligible assets, substitutions, disputes, settlement status, inventory source |
 | `base.py` | shared schema primitives | `SemanticSchemaSpec`, chunk definitions |
 | `registry.py` | schema registry | Registers semantic schemas for extractor/validator use |
+
+### CCP enhancement + margin siblings
+
+Derived from `docs/additional-real-world-collateral-optimizer-references.md`. The
+`collateral_rule_schedule` fallback was **enhanced to 0.2.0** to also cover CCP /
+clearing-house eligibility schedules (clearing-house context, country/currency
+limits, account-scoped eligibility) — the same `rule[i].*` shape. Two **sibling
+templates** capture what an eligibility schema cannot: `margin_requirement`
+(`requirement[i].*` — the margin *demand* the optimizer must satisfy) and
+`collateral_margin_operation` (`call[i].*` — operational/settlement state).
+
+**0.3.0** adds a general `limit[i].*` sub-model, because real schedules impose
+limits a single per-row percentage cannot express: sector, credit-quality,
+asset-type, issuer, country, and currency caps; stated as an **absolute currency
+amount or a relative percent**; measured on **market value or post-haircut
+value**; aggregated over posted collateral / the portfolio / per issuer; and
+often **scoped to one value** ("Technology sector no more than 10%"). Each is one
+`limit[i]` group: `dimension`, `scope_value`, `limit_value`, `limit_unit`,
+`limit_currency`, `basis`, `aggregation`. Simple inline per-row caps may still use
+`rule[i].concentration_limit_pct` etc.
+
+All of these are `0.x` templates: SILVER-only, pending owner-verified golden sets,
+named consumers, and Gate M/Gate S approval (Locked Decision 6). None write gold.
 
 ### The `collateral_rule_schedule` fallback
 
