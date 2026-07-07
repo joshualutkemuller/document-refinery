@@ -8,7 +8,10 @@ import pytest
 from document_refinery.application.limit_consistency import LimitConsistencyError
 from document_refinery.application.pipeline import RefineryPipeline
 from document_refinery.domain.models import SilverExtraction
-from document_refinery.infrastructure.records import GoldLimitStore
+from document_refinery.infrastructure.records import (
+    GoldLimitStore,
+    GoldMarginRequirementStore,
+)
 from document_refinery.infrastructure.tasks import TaskStatus
 
 
@@ -99,6 +102,40 @@ def test_approve_without_limit_store_ignores_limit_rows(
         pipeline.approve(doc_id, approved_by="joshua")
         assert pipeline.last_landed_limits == ()
         assert pipeline.tasks.get(doc_id).status is TaskStatus.GOLD_LANDED
+    finally:
+        pipeline.close()
+
+
+def test_approve_lands_margin_when_margin_store_configured(
+    tmp_path: Path, extraction: Callable[..., SilverExtraction]
+) -> None:
+    doc_id = "doc-margin-1"
+    margin_path = tmp_path / "gold" / "margin_requirements.jsonl"
+    pipeline = RefineryPipeline(
+        tmp_path / "ws", margin_store=GoldMarginRequirementStore(margin_path)
+    )
+    try:
+        rows = tuple(
+            extraction(
+                extraction_id=f"{doc_id}:requirement[0].{suffix}",
+                doc_id=doc_id,
+                doc_class="margin_requirement",
+                field_path=f"requirement[0].{suffix}",
+                normalized_value=value,
+            )
+            for suffix, value in {
+                "counterparty": "Bank A",
+                "margin_type": "IM",
+                "required_amount": "24500000",
+                "currency": "USD",
+            }.items()
+        )
+        _seed_gate_a(pipeline, doc_id, rows)
+        pipeline.approve(doc_id, approved_by="joshua")
+        assert len(pipeline.last_landed_margin) == 1
+        assert pipeline.last_landed_margin[0].counterparty == "Bank A"
+        assert pipeline.tasks.get(doc_id).status is TaskStatus.GOLD_LANDED
+        assert len(GoldMarginRequirementStore(margin_path).history.records) == 1
     finally:
         pipeline.close()
 

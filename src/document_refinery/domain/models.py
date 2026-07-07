@@ -205,3 +205,51 @@ class GoldCollateralLimit:
             raise ValueError("valid_from must be on or before valid_to")
         if self.knowledge_to is not None and self.knowledge_from > self.knowledge_to:
             raise ValueError("knowledge_from must be on or before knowledge_to")
+
+
+@dataclass(frozen=True, slots=True)
+class GoldMarginRequirement:
+    """A canonical, bitemporal margin requirement (the demand side).
+
+    How much margin a counterparty / netting set must post — e.g. an ISDA SIMM
+    Initial Margin figure or a Variation Margin call — which the optimizer must
+    satisfy at lowest cost while respecting the eligibility and limit constraints.
+    Every value traces to silver lineage (Locked Decision 1); landed only through
+    Gate S.
+    """
+
+    counterparty: str
+    agreement_id: str | None
+    csa_schedule_ref: str | None
+    netting_set_id: str | None
+    margin_type: MarginType
+    required_amount: float
+    currency: str
+    risk_class: str | None
+    model: str | None
+    regulatory_regime: str | None
+    valuation_date: date | None
+    valid_from: date | None
+    valid_to: date | None
+    knowledge_from: datetime
+    knowledge_to: datetime | None
+    silver_extraction_ids: tuple[str, ...]
+    doc_id: str
+
+    def __post_init__(self) -> None:
+        if not self.silver_extraction_ids:
+            raise ValueError("gold records require silver lineage")
+        if not self.counterparty.strip():
+            raise ValueError("a margin requirement requires a counterparty")
+        if self.required_amount < 0.0:
+            raise ValueError("required_amount must be non-negative")
+        if not self.currency.strip():
+            raise ValueError("a margin requirement requires a currency")
+        if (
+            self.valid_from is not None
+            and self.valid_to is not None
+            and self.valid_from > self.valid_to
+        ):
+            raise ValueError("valid_from must be on or before valid_to")
+        if self.knowledge_to is not None and self.knowledge_from > self.knowledge_to:
+            raise ValueError("knowledge_from must be on or before knowledge_to")

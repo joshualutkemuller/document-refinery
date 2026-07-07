@@ -28,10 +28,12 @@ from document_refinery.application.distiller import Distiller, DistillerReport
 from document_refinery.application.gates import GateADecision, GateAService
 from document_refinery.application.limit_consistency import LimitConsistencyValidator
 from document_refinery.application.limit_promotion import LimitPromotion
+from document_refinery.application.margin_promotion import MarginRequirementPromotion
 from document_refinery.application.promotion import EligibilityPromotion
 from document_refinery.domain.models import (
     GoldCollateralLimit,
     GoldEligibilityTerm,
+    GoldMarginRequirement,
     SilverExtraction,
 )
 from document_refinery.infrastructure.artifacts import ArtifactStore, BronzeDocument
@@ -88,6 +90,12 @@ class LimitRepository(Protocol):
     def upsert(self, records: tuple[GoldCollateralLimit, ...]) -> object: ...
 
 
+class MarginRepository(Protocol):
+    """Storage seam for landing gold margin requirements."""
+
+    def upsert(self, records: tuple[GoldMarginRequirement, ...]) -> object: ...
+
+
 class RefineryPipeline:
     def __init__(
         self,
@@ -98,6 +106,7 @@ class RefineryPipeline:
         layout_adapter: LayoutAdapter | None = None,
         gold_store: GoldRepository | None = None,
         limit_store: LimitRepository | None = None,
+        margin_store: MarginRepository | None = None,
     ) -> None:
         if (semantic_extractor is None) != (semantic_validator is None):
             raise ValueError("semantic extractor and validator must be configured together")
@@ -132,6 +141,10 @@ class RefineryPipeline:
         self.limit_promotion = LimitPromotion()
         self.limit_consistency = LimitConsistencyValidator()
         self.last_landed_limits: tuple[GoldCollateralLimit, ...] = ()
+        # Opt-in margin-requirement landing (Gate S); off unless margin_store is set.
+        self.margin_store = margin_store
+        self.margin_promotion = MarginRequirementPromotion()
+        self.last_landed_margin: tuple[GoldMarginRequirement, ...] = ()
 
     def run(
         self,
@@ -326,11 +339,15 @@ class RefineryPipeline:
             for group in _group_eligibility_rows(reviewed)
         )
         limit_rows = self._promote_limits(reviewed, knowledge_from=knowledge_from)
+        margin_rows = self._promote_margin(reviewed, knowledge_from=knowledge_from)
         self.tasks.transition(doc_id, TaskStatus.GATE_A_APPROVED)
         self.gold.upsert(gold_rows)
         if self.limit_store is not None and limit_rows:
             self.limit_store.upsert(limit_rows)
+        if self.margin_store is not None and margin_rows:
+            self.margin_store.upsert(margin_rows)
         self.last_landed_limits = limit_rows
+        self.last_landed_margin = margin_rows
         self.tasks.transition(doc_id, TaskStatus.GOLD_LANDED)
         return gold_rows
 
@@ -347,6 +364,14 @@ class RefineryPipeline:
         self.limit_consistency.assert_consistent(reviewed)
         return self.limit_promotion.promote(reviewed, knowledge_from=knowledge_from)
 
+    def _promote_margin(
+        self, reviewed: tuple[SilverExtraction, ...], *, knowledge_from: datetime
+    ) -> tuple[GoldMarginRequirement, ...]:
+        """Opt-in: promote requirement[i] rows when a margin_store is configured."""
+        if self.margin_store is None or not _has_requirement_rows(reviewed):
+            return ()
+        return self.margin_promotion.promote(reviewed, knowledge_from=knowledge_from)
+
     def review_rows(self, doc_id: str) -> tuple[SilverExtraction, ...]:
         """Latest silver under review: the corrected stage if any, else validated."""
         try:
@@ -360,6 +385,10 @@ class RefineryPipeline:
 
 def _has_limit_rows(rows: tuple[SilverExtraction, ...]) -> bool:
     return any(re.match(r"limit\[\d+]\.", row.field_path) for row in rows)
+
+
+def _has_requirement_rows(rows: tuple[SilverExtraction, ...]) -> bool:
+    return any(re.match(r"requirement\[\d+]\.", row.field_path) for row in rows)
 
 
 def _group_eligibility_rows(

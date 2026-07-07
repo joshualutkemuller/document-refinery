@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from document_refinery.domain.models import (
     GoldCollateralLimit,
     GoldEligibilityTerm,
+    GoldMarginRequirement,
     LimitUnit,
     MarginType,
 )
@@ -113,6 +114,44 @@ def test_active_only_filters_superseded_knowledge_versions() -> None:
     assert len(active[0].eligible_assets) == 1
     everything = build_constraint_sets(eligibility, (), active_only=False)
     assert len(everything[0].eligible_assets) == 2
+
+
+def _margin(counterparty: str, agreement_id: str | None) -> GoldMarginRequirement:
+    return GoldMarginRequirement(
+        counterparty=counterparty,
+        agreement_id=agreement_id,
+        csa_schedule_ref=None,
+        netting_set_id=None,
+        margin_type=MarginType.IM,
+        required_amount=24500000.0,
+        currency="USD",
+        risk_class=None,
+        model="ISDA SIMM",
+        regulatory_regime=None,
+        valuation_date=date(2026, 1, 1),
+        valid_from=date(2026, 1, 1),
+        valid_to=None,
+        knowledge_from=_K1,
+        knowledge_to=None,
+        silver_extraction_ids=("m1",),
+        doc_id="doc-1",
+    )
+
+
+def test_margin_demand_joins_into_constraint_set() -> None:
+    eligibility = (_term("Atlas Bank", "AGR-1", "GOVT_US"),)
+    margin = (_margin("Atlas Bank", "AGR-1"),)
+    sets = build_constraint_sets(eligibility, (), margin)
+    assert len(sets) == 1
+    assert len(sets[0].margin_requirements) == 1
+    assert sets[0].margin_requirements[0].required_amount == 24500000.0
+
+
+def test_margin_only_counterparty_seeds_a_set() -> None:
+    sets = build_constraint_sets((), (), (_margin("Beacon Bank", None),))
+    assert [(s.counterparty, s.agreement_id) for s in sets] == [("Beacon Bank", None)]
+    assert sets[0].eligible_assets == ()
+    assert len(sets[0].margin_requirements) == 1
 
 
 def test_limits_only_corpus_yields_unscoped_set() -> None:
