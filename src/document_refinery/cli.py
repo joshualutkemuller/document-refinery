@@ -20,6 +20,7 @@ from document_refinery.application.corrections import (
     CorrectionOutcome,
     CorrectionRequest,
 )
+from document_refinery.application.limit_consistency import LimitConsistencyError
 from document_refinery.application.pipeline import (
     ClassificationReviewRequired,
     GoldRepository,
@@ -45,6 +46,7 @@ from document_refinery.infrastructure.layout_benchmark import (
 )
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
+from document_refinery.infrastructure.records import GoldLimitStore
 from document_refinery.infrastructure.semantic_providers import OpenAISemanticModel
 from document_refinery.infrastructure.watcher import LandingZoneWatcher
 from document_refinery.quality.accuracy import (
@@ -110,6 +112,15 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("doc_id")
     approve.add_argument("--workspace", type=Path, required=True)
     approve.add_argument("--approved-by", required=True)
+    approve.add_argument(
+        "--land-limits",
+        action="store_true",
+        help=(
+            "also promote validated limit[i] rows to gold_collateral_limits "
+            "(behind Gate S; for collateral_rule_schedule documents). Writes "
+            "<workspace>/gold/collateral_limits.jsonl"
+        ),
+    )
     _add_storage_options(approve)
 
     memory = subcommands.add_parser(
@@ -355,14 +366,20 @@ def main() -> int:
     elif args.command == "corpus-check":
         return _run_corpus_check(args)
     elif args.command == "approve":
+        limit_store = None
+        if args.land_limits:
+            limit_store = GoldLimitStore(
+                args.workspace / "gold" / "collateral_limits.jsonl"
+            )
         pipeline = RefineryPipeline(
             args.workspace,
             gold_store=_build_gold_store(args.gold_store, args.gold_uri, args.workspace),
+            limit_store=limit_store,
         )
         try:
             try:
                 gold_rows = pipeline.approve(args.doc_id, approved_by=args.approved_by)
-            except PromotionError as error:
+            except (PromotionError, LimitConsistencyError) as error:
                 print(
                     json.dumps(
                         {
@@ -379,6 +396,7 @@ def main() -> int:
                         "doc_id": args.doc_id,
                         "task_status": "gold_landed",
                         "gold_records": len(gold_rows),
+                        "limit_records": len(pipeline.last_landed_limits),
                     }
                 )
             )

@@ -629,17 +629,19 @@ with complete CSA economics and point-in-time lineage.
 
 Follow-ups from the `collateral_rule_schedule` limit work, in order:
 
-1. **Limit-consistency validator rules (§5.3).** Add the deterministic adversarial
-   checks that mirror the `gold_collateral_limits` promotion guardrails: a
-   value-scoped limit must not exceed its blanket parent for the same dimension;
-   `basis` required when `limit_unit=percent`; percent limits ≤ 100%; absolute
-   limits carry a currency; aggregation stated. Catches silent extraction errors
-   before Gate A. Small, high-signal, no new storage.
-2. **Wire limit promotion into the live pipeline.** Once `collateral_rule_schedule`
-   earns a Gate S sign-off and an owner-verified golden set, route its validated
-   `limit[i]` rows through `LimitPromotion` at approval and land them via the gold
-   store (`--gold-store delta` alongside `gold_eligibility_terms`). Until then the
-   promotion stays engineering-only (the class is a 0.x template).
+1. **Limit-consistency validator rules (§5.3). Delivered:**
+   `application/limit_consistency.py` — `LimitConsistencyValidator` flags invalid
+   units, percent caps missing a basis or out of [0,100], absolute caps missing a
+   currency or negative, and a value-scoped cap looser than the blanket cap for
+   the same dimension. Deterministic, no storage; runs before Gate A.
+2. **Wire limit promotion into the live pipeline. Delivered (opt-in):** a
+   `limit_store` on `RefineryPipeline` and `document-refinery approve --land-limits`
+   run the consistency validator + `LimitPromotion` at approval and land
+   `gold_collateral_limits` to `<workspace>/gold/collateral_limits.jsonl`
+   (`GoldLimitStore`, bitemporal via `InMemoryLimitHistory`). Off by default and
+   never touches the eligibility path; an inconsistency fails closed at Gate A.
+   Still gated by owner Gate S + an owner-verified golden set before production
+   use, and Delta landing for limits is not yet added (JSONL only).
 3. **The optimizer join.** Compose `gold_collateral_limits` +
    `gold_eligibility_terms` + (future) `margin_requirement` gold into the
    constraint + demand set a collateral optimizer's solver consumes, joined on

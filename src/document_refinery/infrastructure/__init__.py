@@ -9,7 +9,7 @@ from .layout import (
 )
 from .layout_benchmark import LayoutBenchmarkCase, LayoutBenchmarkResult, run_layout_benchmark
 from .model_calls import SemanticCallStore
-from .records import GoldStore, SilverStore
+from .records import GoldLimitStore, GoldStore, SilverStore
 from .review_timing import ReviewTiming, ReviewTimingLog, summarize_timings
 from .tasks import TaskRecord, TaskStatus, TaskStore
 from .watcher import LandingCandidate, LandingZoneWatcher
@@ -17,6 +17,7 @@ from .watcher import LandingCandidate, LandingZoneWatcher
 __all__ = [
     "ArtifactStore",
     "BronzeDocument",
+    "GoldLimitStore",
     "GoldStore",
     "LandingCandidate",
     "LandingZoneWatcher",
