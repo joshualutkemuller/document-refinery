@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
 
@@ -30,6 +31,16 @@ from document_refinery.infrastructure.chat_completions import (
     DEFAULT_OLLAMA_URL,
     build_ollama_model,
     build_openai_compatible_model,
+)
+from document_refinery.infrastructure.layout import (
+    LayoutAdapter,
+    OcrLayoutAdapter,
+    PdfPlumberLayoutAdapter,
+    TextLineLayoutAdapter,
+)
+from document_refinery.infrastructure.layout_benchmark import (
+    LayoutBenchmarkCase,
+    run_layout_benchmark,
 )
 from document_refinery.infrastructure.local_semantic import LocalHeuristicSemanticModel
 from document_refinery.infrastructure.memory_store import CorrectionMemoryStore
@@ -113,6 +124,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of *.txt schedules + ground_truth.json",
     )
     accuracy.add_argument("--json", action="store_true", dest="as_json")
+
+    benchmark = subcommands.add_parser(
+        "benchmark",
+        help="run the reproducible N2 OCR/layout benchmark over a document manifest",
+    )
+    benchmark.add_argument(
+        "manifest",
+        type=Path,
+        help="JSON manifest of benchmark cases (see docs/toolchain-evaluation.md)",
+    )
+    benchmark.add_argument("--workspace", type=Path, required=True)
+    benchmark.add_argument(
+        "--adapter",
+        choices=("text-line", "pdfplumber", "ocr"),
+        default="pdfplumber",
+        help=(
+            "layout adapter under test: 'pdfplumber' (text-bearing PDFs, default), "
+            "'ocr' (scanned/image-only PDFs, needs the 'ocr' extra), or 'text-line' "
+            "(deterministic text/Markdown fallback)"
+        ),
+    )
+    benchmark.add_argument("--json", action="store_true", dest="as_json")
 
     watch = subcommands.add_parser("watch", help="process supported landing-zone files")
     watch.add_argument("landing_zone", type=Path)
@@ -254,6 +287,8 @@ def main() -> int:
         return _run_memory(args)
     elif args.command == "accuracy":
         return _run_accuracy(args)
+    elif args.command == "benchmark":
+        return _run_benchmark(args)
     elif args.command == "approve":
         pipeline = RefineryPipeline(
             args.workspace,
@@ -481,6 +516,67 @@ def _run_accuracy(args: argparse.Namespace) -> int:
         "(needs >=95% accuracy, >=10 docs, >=10 owner-verified)."
     )
     return 0
+
+
+def _build_layout_adapter(name: str) -> LayoutAdapter:
+    if name == "text-line":
+        return TextLineLayoutAdapter()
+    if name == "pdfplumber":
+        return PdfPlumberLayoutAdapter()
+    if name == "ocr":
+        return OcrLayoutAdapter()
+    raise ValueError(f"unsupported layout adapter: {name}")
+
+
+def _load_benchmark_cases(manifest: Path) -> tuple[LayoutBenchmarkCase, ...]:
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    entries = payload.get("cases") if isinstance(payload, dict) else payload
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("manifest must contain a non-empty 'cases' list")
+    base = manifest.resolve().parent
+    cases: list[LayoutBenchmarkCase] = []
+    for entry in entries:
+        raw_path = Path(str(entry["path"]))
+        path = raw_path if raw_path.is_absolute() else base / raw_path
+        expected = entry.get("expected_locator_count")
+        cases.append(
+            LayoutBenchmarkCase(
+                name=str(entry["name"]),
+                path=path,
+                minimum_text_characters=int(entry.get("minimum_text_characters", 1)),
+                minimum_table_cells=int(entry.get("minimum_table_cells", 0)),
+                expected_locator_count=None if expected is None else int(expected),
+            )
+        )
+    return tuple(cases)
+
+
+def _run_benchmark(args: argparse.Namespace) -> int:
+    if not args.manifest.exists():
+        print(f"error: manifest not found: {args.manifest}")
+        return 2
+    cases = _load_benchmark_cases(args.manifest)
+    results = run_layout_benchmark(
+        workspace=args.workspace,
+        cases=cases,
+        layout_adapter=_build_layout_adapter(args.adapter),
+    )
+    output = args.workspace / "layout_benchmark_results.json"
+    if args.as_json:
+        print(json.dumps([asdict(result) for result in results], indent=2))
+    else:
+        for result in results:
+            marker = "PASS" if result.status == "passed" else "FAIL"
+            print(
+                f"[{marker}] {result.name}: {result.adapter} v{result.adapter_version} — "
+                f"{result.text_characters} chars, {result.table_cell_count} cells, "
+                f"conf {result.mean_confidence:.2f}, {result.reading_order_locators} locators, "
+                f"reproducibility {result.locator_reproducibility:.0%}, {result.latency_ms}ms"
+            )
+            if result.issues:
+                print(f"        issues: {', '.join(result.issues)}")
+        print(f"Benchmark results: {output}")
+    return 0 if all(result.status == "passed" for result in results) else 1
 
 
 def _run_memory(args: argparse.Namespace) -> int:

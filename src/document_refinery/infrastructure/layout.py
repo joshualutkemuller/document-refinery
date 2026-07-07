@@ -250,7 +250,216 @@ class PdfPlumberLayoutAdapter:
         )
 
 
-def _quality(pages: tuple[LayoutPage, ...]) -> LayoutQualityReport:
+@dataclass(frozen=True, slots=True)
+class OcrWord:
+    """A single word recognized by an OCR engine with its box and confidence."""
+
+    text: str
+    bbox: BoundingBox
+    confidence: float
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("OCR word confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class OcrTextPage:
+    """OCR output for one rendered page: geometry plus recognized words."""
+
+    page: int
+    width: float | None
+    height: float | None
+    words: tuple[OcrWord, ...]
+
+
+class OcrEngine(Protocol):
+    """Vendor-neutral OCR boundary. Implementations render and recognize a document.
+
+    Keeping this a protocol lets the image-only layout path stay testable with a
+    scripted engine while the production engine (e.g. Tesseract) is selected by
+    the owner as part of the open N2 toolchain decision.
+    """
+
+    @property
+    def engine_name(self) -> str: ...
+
+    @property
+    def engine_version(self) -> str: ...
+
+    def recognize(self, path: Path) -> tuple[OcrTextPage, ...]: ...
+
+
+class TesseractOcrEngine:
+    """Reference OCR engine wrapping Tesseract via ``pytesseract`` + ``pypdfium2``.
+
+    Kept intentionally thin: it is the untrusted I/O boundary. All line-grouping,
+    reading-order, and quality logic lives in :class:`OcrLayoutAdapter`, which is
+    exercised in tests with a scripted engine. This engine requires the ``ocr``
+    project extra and the system Tesseract binary.
+    """
+
+    engine_name = "tesseract-ocr"
+
+    def __init__(self, *, render_scale: float = 2.0, language: str = "eng") -> None:
+        self.render_scale = render_scale
+        self.language = language
+
+    @property
+    def engine_version(self) -> str:
+        return f"tesseract-{self.language}-{self.render_scale:g}x"
+
+    def recognize(self, path: Path) -> tuple[OcrTextPage, ...]:
+        try:
+            import pypdfium2
+            import pytesseract
+        except ImportError as error:
+            raise RuntimeError(
+                "Tesseract OCR requires the 'ocr' project extra "
+                "(pytesseract, pypdfium2) and a system tesseract binary"
+            ) from error
+
+        pages: list[OcrTextPage] = []
+        document = pypdfium2.PdfDocument(path)
+        try:
+            for page_index in range(len(document)):
+                page = document[page_index]
+                bitmap = page.render(scale=self.render_scale)
+                image = bitmap.to_pil()
+                data = pytesseract.image_to_data(
+                    image,
+                    lang=self.language,
+                    output_type=pytesseract.Output.DICT,
+                )
+                words: list[OcrWord] = []
+                for index, raw_text in enumerate(data["text"]):
+                    text = str(raw_text).strip()
+                    conf = float(data["conf"][index])
+                    if not text or conf < 0:
+                        continue
+                    left = float(data["left"][index]) / self.render_scale
+                    top = float(data["top"][index]) / self.render_scale
+                    width = float(data["width"][index]) / self.render_scale
+                    height = float(data["height"][index]) / self.render_scale
+                    words.append(
+                        OcrWord(
+                            text,
+                            BoundingBox(left, top, left + width, top + height),
+                            min(max(conf / 100.0, 0.0), 1.0),
+                        )
+                    )
+                pages.append(
+                    OcrTextPage(
+                        page_index + 1,
+                        float(image.width) / self.render_scale,
+                        float(image.height) / self.render_scale,
+                        tuple(words),
+                    )
+                )
+        finally:
+            document.close()
+        return tuple(pages)
+
+
+class OcrLayoutAdapter:
+    """Layout adapter for scanned/image-only PDFs, driven by an OCR engine.
+
+    Recognized words are grouped into reading-order lines with confidence-bearing
+    coordinates so image-only schedules can produce a passing bronze layout
+    artifact instead of failing the structural gate. Because OCR confidence is
+    lower than deterministic text extraction, the quality gate uses a dedicated
+    ``confidence_floor`` rather than the 1.0-confidence text-adapter threshold.
+    """
+
+    adapter_name = "ocr-layout"
+
+    def __init__(
+        self,
+        engine: OcrEngine | None = None,
+        *,
+        confidence_floor: float = 0.8,
+        line_tolerance: float = 6.0,
+    ) -> None:
+        self.engine: OcrEngine = engine or TesseractOcrEngine()
+        self.confidence_floor = confidence_floor
+        self.line_tolerance = line_tolerance
+
+    @property
+    def adapter_version(self) -> str:
+        return f"1.0.0+{self.engine.engine_name}-{self.engine.engine_version}"
+
+    def analyze(self, *, doc_id: str, path: Path, pages: tuple[str, ...]) -> LayoutArtifact:
+        del pages  # image-only source: text comes from the OCR engine, not upstream
+        ocr_pages = self.engine.recognize(path)
+        layout_pages: list[LayoutPage] = []
+        for ocr_page in ocr_pages:
+            lines: list[LayoutLine] = []
+            reading_order: list[str] = []
+            for line_number, line_words in enumerate(
+                _group_words_into_lines(ocr_page.words, self.line_tolerance), start=1
+            ):
+                text = " ".join(word.text for word in line_words)
+                bbox = BoundingBox(
+                    min(word.bbox.x0 for word in line_words),
+                    min(word.bbox.y0 for word in line_words),
+                    max(word.bbox.x1 for word in line_words),
+                    max(word.bbox.y1 for word in line_words),
+                )
+                tokens = tuple(
+                    LayoutToken(word.text, word.bbox, word.confidence) for word in line_words
+                )
+                confidence = sum(word.confidence for word in line_words) / len(line_words)
+                locator = f"page={ocr_page.page};line={line_number}"
+                lines.append(LayoutLine(line_number, text, locator, bbox, tokens, confidence))
+                reading_order.append(locator)
+            layout_pages.append(
+                LayoutPage(
+                    ocr_page.page,
+                    ocr_page.width,
+                    ocr_page.height,
+                    tuple(lines),
+                    (),
+                    tuple(reading_order),
+                )
+            )
+        return LayoutArtifact(
+            doc_id,
+            self.adapter_name,
+            self.adapter_version,
+            tuple(layout_pages),
+            _quality(tuple(layout_pages), confidence_floor=self.confidence_floor),
+        )
+
+
+def _group_words_into_lines(
+    words: tuple[OcrWord, ...], line_tolerance: float
+) -> list[list[OcrWord]]:
+    """Cluster words into visual lines by vertical center, ordered top-to-bottom.
+
+    Deterministic greedy grouping: words are visited in vertical order and join
+    the current line while their vertical center stays within ``line_tolerance``
+    of the line's running center; each line is then ordered left-to-right.
+    """
+
+    def center(word: OcrWord) -> float:
+        return (word.bbox.y0 + word.bbox.y1) / 2.0
+
+    ordered = sorted(words, key=lambda word: (center(word), word.bbox.x0))
+    lines: list[list[OcrWord]] = []
+    line_center = 0.0
+    for word in ordered:
+        if lines and abs(center(word) - line_center) <= line_tolerance:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+        current = lines[-1]
+        line_center = sum(center(member) for member in current) / len(current)
+    return [sorted(line, key=lambda word: word.bbox.x0) for line in lines]
+
+
+def _quality(
+    pages: tuple[LayoutPage, ...], *, confidence_floor: float = 0.95
+) -> LayoutQualityReport:
     confidences = [line.confidence for page in pages for line in page.lines] + [
         cell.confidence for page in pages for cell in page.table_cells
     ]
@@ -262,7 +471,7 @@ def _quality(pages: tuple[LayoutPage, ...]) -> LayoutQualityReport:
     if not all(page.reading_order for page in pages):
         issues.append("missing_reading_order")
     mean = sum(confidences) / len(confidences) if confidences else 0.0
-    if mean < 0.95:
+    if mean < confidence_floor:
         issues.append("low_layout_confidence")
     return LayoutQualityReport(
         "failed" if issues else "passed", mean, chars, cell_count, tuple(issues)

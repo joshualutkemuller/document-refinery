@@ -12,8 +12,17 @@ from document_refinery.agents.semantic import (
     SemanticValidator,
 )
 from document_refinery.application.pipeline import RefineryPipeline
+from document_refinery.cli import main
 from document_refinery.infrastructure.artifacts import ArtifactStore
-from document_refinery.infrastructure.layout import LayoutArtifact, LayoutPage, LayoutQualityReport
+from document_refinery.infrastructure.layout import (
+    BoundingBox,
+    LayoutArtifact,
+    LayoutPage,
+    LayoutQualityReport,
+    OcrLayoutAdapter,
+    OcrTextPage,
+    OcrWord,
+)
 from document_refinery.infrastructure.layout_benchmark import (
     LayoutBenchmarkCase,
     run_layout_benchmark,
@@ -201,6 +210,110 @@ def test_structurally_failed_layout_blocks_semantic_extraction(tmp_path: Path) -
     with pytest.raises(ValueError, match="layout artifact failed structural quality gates"):
         pipeline.run(source, source="test")
     pipeline.close()
+
+
+class ScriptedOcrEngine:
+    engine_name = "scripted-ocr"
+    engine_version = "test-1"
+
+    def __init__(self, pages: tuple[OcrTextPage, ...]) -> None:
+        self._pages = pages
+
+    def recognize(self, path: Path) -> tuple[OcrTextPage, ...]:
+        del path
+        return self._pages
+
+
+def test_ocr_adapter_groups_words_into_reading_order_lines(tmp_path: Path) -> None:
+    page = OcrTextPage(
+        page=1,
+        width=200.0,
+        height=100.0,
+        words=(
+            # Deliberately out of reading order to prove deterministic grouping.
+            OcrWord("Assets", BoundingBox(60.0, 1.0, 110.0, 9.0), 0.94),
+            OcrWord("Eligible", BoundingBox(0.0, 0.0, 50.0, 10.0), 0.9),
+            OcrWord("5%", BoundingBox(70.0, 22.0, 90.0, 30.0), 0.88),
+            OcrWord("Haircut", BoundingBox(0.0, 20.0, 55.0, 30.0), 0.92),
+        ),
+    )
+    adapter = OcrLayoutAdapter(ScriptedOcrEngine((page,)))
+    artifact = adapter.analyze(doc_id="doc-ocr", path=tmp_path / "scan.pdf", pages=())
+
+    assert artifact.adapter == "ocr-layout"
+    assert artifact.adapter_version.endswith("scripted-ocr-test-1")
+    assert artifact.quality.status == "passed"
+    lines = artifact.pages[0].lines
+    assert [line.text for line in lines] == ["Eligible Assets", "Haircut 5%"]
+    assert artifact.pages[0].reading_order == ("page=1;line=1", "page=1;line=2")
+    assert lines[0].tokens[0].confidence == 0.9
+
+
+def test_ocr_adapter_empty_page_fails_quality_gate(tmp_path: Path) -> None:
+    adapter = OcrLayoutAdapter(
+        ScriptedOcrEngine((OcrTextPage(page=1, width=10.0, height=10.0, words=()),))
+    )
+    artifact = adapter.analyze(doc_id="doc-blank", path=tmp_path / "blank.pdf", pages=())
+    assert artifact.quality.status == "failed"
+    assert "no_text_coordinates" in artifact.quality.issues
+
+
+def test_ocr_adapter_low_confidence_fails_gate(tmp_path: Path) -> None:
+    page = OcrTextPage(
+        page=1,
+        width=100.0,
+        height=100.0,
+        words=(OcrWord("blurry", BoundingBox(0.0, 0.0, 40.0, 10.0), 0.5),),
+    )
+    adapter = OcrLayoutAdapter(ScriptedOcrEngine((page,)), confidence_floor=0.8)
+    artifact = adapter.analyze(doc_id="doc-low", path=tmp_path / "low.pdf", pages=())
+    assert artifact.quality.status == "failed"
+    assert "low_layout_confidence" in artifact.quality.issues
+
+
+def test_benchmark_cli_runs_manifest_and_writes_results(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = tmp_path / "multi_column.txt"
+    document.write_text("Header row\nCell A | Cell B", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "multi-column",
+                        "path": "multi_column.txt",
+                        "minimum_text_characters": 5,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "workspace"
+
+    argv = [
+        "document-refinery",
+        "benchmark",
+        str(manifest),
+        "--workspace",
+        str(workspace),
+        "--adapter",
+        "text-line",
+    ]
+    monkeypatch.setattr("sys.argv", argv)
+    code = main()
+
+    assert code == 0
+    results_path = workspace / "layout_benchmark_results.json"
+    payload = json.loads(results_path.read_text(encoding="utf-8"))
+    assert payload[0]["name"] == "multi-column"
+    assert payload[0]["status"] == "passed"
+    captured = capsys.readouterr()
+    assert "[PASS] multi-column" in captured.out
 
 
 def test_layout_benchmark_publishes_threshold_results(tmp_path: Path) -> None:

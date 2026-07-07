@@ -1,7 +1,12 @@
 """Local infrastructure adapters for Phase 0/1."""
 
 from .artifacts import ArtifactStore, BronzeDocument, TextArtifact
-from .layout import PdfPlumberLayoutAdapter, TextLineLayoutAdapter
+from .layout import (
+    OcrLayoutAdapter,
+    PdfPlumberLayoutAdapter,
+    TesseractOcrEngine,
+    TextLineLayoutAdapter,
+)
 from .layout_benchmark import LayoutBenchmarkCase, LayoutBenchmarkResult, run_layout_benchmark
 from .model_calls import SemanticCallStore
 from .records import GoldStore, SilverStore
@@ -16,7 +21,9 @@ __all__ = [
     "LandingZoneWatcher",
     "LayoutBenchmarkCase",
     "LayoutBenchmarkResult",
+    "OcrLayoutAdapter",
     "PdfPlumberLayoutAdapter",
+    "TesseractOcrEngine",
     "SilverStore",
     "SemanticCallStore",
     "TaskRecord",
