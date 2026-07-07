@@ -55,6 +55,14 @@
       "expected_route": "classification_review",
       "synthetic": true,
       "note": "Not a real published document. Exercises conservative classification-review routing for unknown layouts; real CSAs, triparty schedules, and central-bank haircut tables follow this path until a semantic extractor is configured."
+    },
+    {
+      "path": "fed-discount-window-collateral-valuation.pdf",
+      "title": "Federal Reserve Discount Window Collateral Valuation and Margins Table",
+      "source_url": "https://www.frbdiscountwindow.org/pages/collateral/collateral_valuation",
+      "sha256": "f94c3e1d752026a601c972ea20d70bab1e0dd9987617eac5d773204db7dc19e5",
+      "profile": "unknown",
+      "expected_route": "classification_review"
     }
   ]
 }
