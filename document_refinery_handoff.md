@@ -563,13 +563,19 @@ still requires owner-verified examples and review-time evidence.
    **deterministic** eligibility route by default and the **semantic route** with
    `--semantic-provider` (routing each case by its ground-truth `doc_class`), so
    semantic-only classes such as `collateral_rule_schedule` are scorable against
-   a real model. **Intake + review-time harness delivered:**
+   a real model. The report folds in semantic **latency** and **token usage** per
+   run, plus an estimated **cost** when the owner supplies `--cost-per-1k-input`/
+   `--cost-per-1k-output` rates (no prices are hardcoded). **Intake + review-time
+   harness delivered:**
    `document-refinery corpus-check` validates an owner corpus (ground-truth ↔
    document consistency, owner-verified counts, release blockers) before scoring,
    and `document-refinery review-time` reports measured owner review time against
    the ≤15-minute exit target from durable per-review timing captured by the
    `review` command. A `collateral_rule_schedule` intake scaffold ships in
    `examples/collateral_rule_corpus/` (owner-verified false, gate blocked).
+   **Remaining (deferred):** metrics are reported per corpus run but not yet
+   sliced **by model version** within a single report; add this when comparing
+   models (it only matters for model-vs-model release decisions under Gate M).
 4. Feed every correction into a golden case or constitution rule. **Delivered:**
    `document-refinery distill` turns the correction log into constitution-rule
    proposals (repeated corrections) and golden-case proposals (every

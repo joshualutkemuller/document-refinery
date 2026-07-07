@@ -59,8 +59,13 @@ export OPENAI_API_KEY=sk-...
 document-refinery accuracy --corpus examples/collateral_rule_corpus \
   --semantic-provider openai \
   --semantic-extractor-model gpt-5.5 \
-  --semantic-validator-model gpt-5.5
+  --semantic-validator-model gpt-5.5 \
+  --cost-per-1k-input 0.005 --cost-per-1k-output 0.015
 ```
+
+The report folds in semantic **latency** and **token usage**; supplying
+`--cost-per-1k-input` / `--cost-per-1k-output` (your provider's rates — none are
+hardcoded) also folds in an estimated cost.
 
 The offline `--semantic-provider local` heuristic only emits eligibility-shaped
 fields, so it is not a meaningful scorer for this class — use it to smoke-test

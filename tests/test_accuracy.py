@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from document_refinery.agents.semantic import SemanticCallRecord
 from document_refinery.cli import main
 from document_refinery.domain.models import SilverExtraction
-from document_refinery.quality.accuracy import GoldenCase, load_corpus, score_corpus
+from document_refinery.quality.accuracy import (
+    GoldenCase,
+    ScoredRun,
+    TokenCostModel,
+    load_corpus,
+    score_corpus,
+)
 
 _DOC = """Collateral Eligibility Schedule
 Eligible Collateral
@@ -93,18 +101,83 @@ def test_score_corpus_routes_through_custom_row_provider(
         doc_class="collateral_rule_schedule",
     )
 
-    def provider(scored: GoldenCase) -> tuple[SilverExtraction, ...]:
+    def provider(scored: GoldenCase) -> ScoredRun:
         # The semantic route hands the case's doc_class to the scorer.
         assert scored.doc_class == "collateral_rule_schedule"
-        return (
-            extraction(field_path="rule[0].haircut_pct", normalized_value="2"),
-            extraction(field_path="rule[0].fx_haircut_pct", normalized_value="7"),  # wrong
+        return ScoredRun(
+            rows=(
+                extraction(field_path="rule[0].haircut_pct", normalized_value="2"),
+                extraction(field_path="rule[0].fx_haircut_pct", normalized_value="7"),  # wrong
+            )
         )
 
     report = score_corpus((case,), row_provider=provider)
     assert report.correct_fields == 1  # haircut matches, fx_haircut does not
     assert report.total_fields == 2
     assert any(m.field_path == "rule[0].fx_haircut_pct" for m in report.mismatches)
+
+
+def _call(latency_ms: int, input_tokens: int, output_tokens: int) -> SemanticCallRecord:
+    return SemanticCallRecord(
+        doc_id="c1",
+        role="extractor",
+        provider="scripted",
+        model="test-model",
+        session_id="s",
+        response_id="r",
+        prompt_version="v1",
+        schema_version="v1",
+        constitution_version="v1",
+        language="und",
+        request_hash="rh",
+        response_hash="rp",
+        created_at=datetime(2026, 7, 7, tzinfo=UTC),
+        latency_ms=latency_ms,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+    )
+
+
+def test_performance_and_cost_folded_from_semantic_calls(
+    extraction: Callable[..., SilverExtraction],
+) -> None:
+    case = GoldenCase(
+        case_id="c1",
+        text="US Treasury eligible with a 2% haircut.",
+        expected={"rule[0].haircut_pct": "2"},
+        doc_class="collateral_rule_schedule",
+    )
+
+    def provider(_: GoldenCase) -> ScoredRun:
+        return ScoredRun(
+            rows=(extraction(field_path="rule[0].haircut_pct", normalized_value="2"),),
+            calls=(_call(1200, 1000, 500), _call(800, 400, 200)),
+        )
+
+    report = score_corpus(
+        (case,),
+        row_provider=provider,
+        cost_model=TokenCostModel(input_per_1k=0.005, output_per_1k=0.015),
+    )
+    perf = report.performance
+    assert perf.semantic_call_count == 2
+    assert perf.total_latency_ms == 2000
+    assert perf.mean_latency_ms_per_document(report.document_count) == 2000.0
+    assert perf.total_input_tokens == 1400
+    assert perf.total_output_tokens == 700
+    assert perf.total_tokens == 2100
+    # 1400/1000*0.005 + 700/1000*0.015 = 0.007 + 0.0105
+    assert perf.estimated_cost_usd == pytest.approx(0.0175)
+    assert report.to_dict()["performance"]["estimated_cost_usd"] == 0.0175
+
+
+def test_deterministic_route_has_no_semantic_performance() -> None:
+    report = score_corpus(
+        (GoldenCase(case_id="c1", text=_DOC, expected=_EXPECTED, owner_verified=True),)
+    )
+    assert report.performance.semantic_call_count == 0
+    assert report.performance.estimated_cost_usd is None
 
 
 def test_accuracy_cli_semantic_route_runs_end_to_end(
