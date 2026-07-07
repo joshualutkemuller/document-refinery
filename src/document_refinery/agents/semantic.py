@@ -484,18 +484,30 @@ def _repair_valuation_margin_source_clause(
         source_locator,
         flags=re.IGNORECASE,
     )
-    if line_match is None:
-        return None
     prompt_lines = [line.strip() for line in prompt_text.splitlines()]
-    line_index = int(line_match.group(1)) - 1
-    if line_index < 0 or line_index >= len(prompt_lines):
+    if line_match is not None:
+        line_index = int(line_match.group(1)) - 1
+        if 0 <= line_index < len(prompt_lines):
+            candidate = prompt_lines[line_index]
+            if _is_verbatim_valuation_source_row(candidate, text):
+                return candidate
+    group_match = re.search(r"valuation_margin\[(\d+)\]", field_path)
+    if group_match is None:
         return None
-    candidate = prompt_lines[line_index]
-    if candidate not in text:
+    source_rows = [
+        line for line in prompt_lines if _is_verbatim_valuation_source_row(line, text)
+    ]
+    source_row_index = int(group_match.group(1)) // 5
+    if source_row_index >= len(source_rows):
         return None
-    if re.search(r"(?:\s+\d{2,3}){5}\s*$", candidate) is None:
+    candidate = source_rows[source_row_index]
+    if not _is_verbatim_valuation_source_row(candidate, text):
         return None
     return candidate
+
+
+def _is_verbatim_valuation_source_row(candidate: str, text: str) -> bool:
+    return candidate in text and re.search(r"(?:\s+\d{2,3}){5}\s*$", candidate) is not None
 
 
 def _object_response(content: str) -> dict[str, object]:

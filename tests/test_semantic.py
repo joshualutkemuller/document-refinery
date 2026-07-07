@@ -314,6 +314,55 @@ def test_valuation_margin_extractor_repairs_prompt_line_source_clause() -> None:
     assert result.rows[0].source_clause == second_table_clause
 
 
+def test_valuation_margin_extractor_repairs_source_clause_from_group_index() -> None:
+    first_table_clause = (
+        "Bills, Notes, Bonds, Floating Rate Notes, and Inflation-Indexed 99 99 98 97 95"
+    )
+    second_table_clause = "STRIPS 96 96 96 96 94"
+    full_text = "\n".join(
+        (
+            "Collateral Valuation",
+            "Securities Valuation and Margins Table",
+            first_table_clause,
+            second_table_clause,
+        )
+    )
+    payload = {
+        "extractions": [
+            {
+                "field_path": "valuation_margin[5].asset_category",
+                "raw_value": "STRIPS",
+                "normalized_value": "STRIPS",
+                "value_type": "string",
+                "unit": None,
+                "currency": None,
+                "source_clause": "Treasury STRIPS 96 96 96 96 94",
+                "source_locator": "row=2",
+                "confidence": 0.88,
+                "ambiguity_flag": False,
+                "ambiguity_note": None,
+            }
+        ]
+    }
+    model = ScriptedModel(
+        session_id="extractor-session",
+        handler=lambda _: json.dumps(payload),
+    )
+    extractor = SemanticExtractor(
+        model,
+        extractor_version="semantic-test-1.0.0",
+        schemas=semantic_schemas(),
+    )
+
+    result = extractor.extract(
+        doc_id="doc-fed",
+        doc_class="collateral_valuation_margin_table",
+        text=full_text,
+    )
+
+    assert result.rows[0].source_clause == second_table_clause
+
+
 def test_semantic_validator_requires_separate_session() -> None:
     clause = "Eligible collateral includes government bonds."
     model = ScriptedModel(
