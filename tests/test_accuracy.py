@@ -115,6 +115,28 @@ def test_corpus_check_reports_structural_problems(
     assert "8 more document(s)" in report["release_blockers"]
 
 
+def test_shipped_rule_schedule_corpus_is_structurally_valid(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    corpus = (
+        Path(__file__).resolve().parents[1] / "examples" / "collateral_rule_corpus"
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["document-refinery", "corpus-check", "--corpus", str(corpus), "--json"],
+    )
+    code = main()
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 0  # structurally valid scaffold
+    assert report["structurally_valid"] is True
+    assert report["document_count"] == 5
+    # Ships as an unverified template: the release gate must still block.
+    assert report["owner_verified_document_count"] == 0
+    assert report["release_blockers"]
+
+
 def test_corpus_check_passes_on_valid_corpus(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

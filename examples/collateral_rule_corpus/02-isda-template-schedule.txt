@@ -1,0 +1,15 @@
+ISDA Template Collateral Schedule (Uncleared Margin Rules)
+Counterparty: [REPLACE WITH VERIFIED COUNTERPARTY]
+Agreement ID: [REPLACE WITH VERIFIED AGREEMENT ID]
+CSA Type: ISDA IM Template
+Margin Type: IM
+
+Eligible Collateral Schedule
+Collateral: Cash | Rating: Any | Haircut: 0%
+Collateral: AAA Government Bonds | Rating: AAA | Haircut: 0.5%
+Collateral: AA Government Bonds | Rating: AA | Haircut: 2%
+Collateral: A Government Bonds | Rating: A | Haircut: 4%
+Collateral: AA Corporate Bonds | Rating: AA | Haircut: 6%
+Collateral: A Corporate Bonds | Rating: A | Haircut: 10%
+Collateral: BBB Corporate Bonds | Rating: BBB | Haircut: 15%
+Collateral: Listed Equity | Rating: Major Index | Haircut: 15%

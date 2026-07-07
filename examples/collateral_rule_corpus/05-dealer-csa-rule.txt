@@ -1,0 +1,19 @@
+Typical Dealer CSA Schedule (Rule-Based Eligibility Engine)
+Counterparty: [REPLACE WITH VERIFIED COUNTERPARTY]
+Agreement ID: [REPLACE WITH VERIFIED AGREEMENT ID]
+CSA Type: Dealer CSA
+Margin Type: VM
+
+Eligibility Rule
+Asset Class: Government Bond
+Country: United States
+Currency: USD
+Issuer: US Treasury
+Rating: AA or Better
+Remaining Maturity: 0 to 1 Year
+Haircut: 0.5%
+Concentration Limit: 100%
+Wrong-Way Risk: False
+Settlement Location: Fedwire
+Eligible: True
+Priority Score: 1

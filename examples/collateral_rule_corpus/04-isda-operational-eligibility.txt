@@ -1,0 +1,20 @@
+ISDA Operational Collateral Eligibility Guidance
+Counterparty: [REPLACE WITH VERIFIED COUNTERPARTY]
+Agreement ID: [REPLACE WITH VERIFIED AGREEMENT ID]
+CSA Type: Operational Eligibility Engine
+Margin Type: VM
+
+Operational Eligibility Rule
+Asset Type: Government Bond
+Currency: USD
+Country: United States
+Issuer: US Treasury
+Rating: AA+
+Minimum Issue Size: 500MM USD
+Remaining Maturity: 0 to 5 Years
+Haircut: 2%
+FX Haircut: 8%
+Concentration Limit: 25%
+Custodian: BNY Mellon
+Settlement System: Fedwire
+Eligible: Yes
