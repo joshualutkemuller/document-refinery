@@ -24,6 +24,7 @@ from document_refinery.application.limit_consistency import LimitConsistencyErro
 from document_refinery.application.pipeline import (
     ClassificationReviewRequired,
     GoldRepository,
+    LimitRepository,
     RefineryPipeline,
 )
 from document_refinery.application.promotion import PromotionError
@@ -120,8 +121,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "also promote validated limit[i] rows to gold_collateral_limits "
-            "(behind Gate S; for collateral_rule_schedule documents). Writes "
-            "<workspace>/gold/collateral_limits.jsonl"
+            "(behind Gate S; for collateral_rule_schedule documents)"
+        ),
+    )
+    approve.add_argument(
+        "--limit-store",
+        choices=("jsonl", "delta"),
+        default="jsonl",
+        help="limit storage backend for --land-limits: 'jsonl' (default) or 'delta'",
+    )
+    approve.add_argument(
+        "--limit-uri",
+        help=(
+            "Delta table URI for --limit-store delta (local path or s3://, az://, "
+            "gs://). Defaults to <workspace>/gold/collateral_limits.delta"
         ),
     )
     approve.add_argument(
@@ -315,6 +328,17 @@ def _build_gold_store(
     return DeltaGoldStore(uri)
 
 
+def _build_limit_store(
+    kind: str, limit_uri: str | None, workspace: Path
+) -> LimitRepository:
+    if kind == "delta":
+        from document_refinery.infrastructure.delta_store import DeltaLimitStore
+
+        uri = limit_uri or str(workspace / "gold" / "collateral_limits.delta")
+        return DeltaLimitStore(uri)
+    return GoldLimitStore(workspace / "gold" / "collateral_limits.jsonl")
+
+
 def main() -> int:
     args = build_parser().parse_args()
     if args.command == "ddl":
@@ -380,8 +404,8 @@ def main() -> int:
     elif args.command == "approve":
         limit_store = None
         if args.land_limits:
-            limit_store = GoldLimitStore(
-                args.workspace / "gold" / "collateral_limits.jsonl"
+            limit_store = _build_limit_store(
+                args.limit_store, args.limit_uri, args.workspace
             )
         margin_store = None
         if args.land_margin:

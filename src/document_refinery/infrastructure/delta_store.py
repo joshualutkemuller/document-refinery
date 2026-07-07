@@ -20,8 +20,16 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from document_refinery.application.promotion import InMemoryBitemporalHistory
-from document_refinery.domain.models import GoldEligibilityTerm, MarginType
+from document_refinery.application.promotion import (
+    InMemoryBitemporalHistory,
+    InMemoryLimitHistory,
+)
+from document_refinery.domain.models import (
+    GoldCollateralLimit,
+    GoldEligibilityTerm,
+    LimitUnit,
+    MarginType,
+)
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -100,6 +108,124 @@ class DeltaGoldStore:
 
         rows = [_gold_to_row(record) for record in records]
         return pa.Table.from_pylist(rows, schema=_gold_schema())
+
+
+def _limit_schema() -> pa.Schema:
+    import pyarrow as pa
+
+    return pa.schema(
+        [
+            ("dimension", pa.string()),
+            ("scope_value", pa.string()),
+            ("limit_value", pa.float64()),
+            ("limit_unit", pa.string()),
+            ("limit_currency", pa.string()),
+            ("basis", pa.string()),
+            ("aggregation", pa.string()),
+            ("counterparty", pa.string()),
+            ("agreement_id", pa.string()),
+            ("schedule_version", pa.string()),
+            ("clearing_house", pa.string()),
+            ("valid_from", pa.date32()),
+            ("valid_to", pa.date32()),
+            ("knowledge_from", pa.timestamp("us", tz="UTC")),
+            ("knowledge_to", pa.timestamp("us", tz="UTC")),
+            ("silver_extraction_ids", pa.list_(pa.string())),
+            ("doc_id", pa.string()),
+        ]
+    )
+
+
+class DeltaLimitStore:
+    """Delta Lake adapter for gold collateral limits (parallel to DeltaGoldStore)."""
+
+    def __init__(
+        self,
+        table_uri: str,
+        *,
+        storage_options: dict[str, str] | None = None,
+    ) -> None:
+        self.table_uri = table_uri
+        self.storage_options = storage_options
+        self.history = InMemoryLimitHistory()
+        for record in self._load_existing():
+            self.history.upsert(record)
+
+    def upsert(self, records: tuple[GoldCollateralLimit, ...]) -> str:
+        from deltalake import write_deltalake
+
+        for record in records:
+            self.history.upsert(record)
+        table = self._arrow_table(self.history.records)
+        write_deltalake(
+            self.table_uri,
+            table,
+            mode="overwrite",
+            schema_mode="overwrite",
+            storage_options=self.storage_options,
+        )
+        return self.table_uri
+
+    def _load_existing(self) -> tuple[GoldCollateralLimit, ...]:
+        from deltalake import DeltaTable
+        from deltalake.exceptions import TableNotFoundError
+
+        try:
+            table = DeltaTable(self.table_uri, storage_options=self.storage_options)
+        except TableNotFoundError:
+            return ()
+        rows = table.to_pyarrow_table().to_pylist()
+        return tuple(_limit_from_row(row) for row in rows)
+
+    def _arrow_table(self, records: tuple[GoldCollateralLimit, ...]) -> pa.Table:
+        import pyarrow as pa
+
+        rows = [_limit_to_row(record) for record in records]
+        return pa.Table.from_pylist(rows, schema=_limit_schema())
+
+
+def _limit_to_row(record: GoldCollateralLimit) -> dict[str, Any]:
+    return {
+        "dimension": record.dimension,
+        "scope_value": record.scope_value,
+        "limit_value": record.limit_value,
+        "limit_unit": record.limit_unit.value,
+        "limit_currency": record.limit_currency,
+        "basis": record.basis,
+        "aggregation": record.aggregation,
+        "counterparty": record.counterparty,
+        "agreement_id": record.agreement_id,
+        "schedule_version": record.schedule_version,
+        "clearing_house": record.clearing_house,
+        "valid_from": record.valid_from,
+        "valid_to": record.valid_to,
+        "knowledge_from": record.knowledge_from,
+        "knowledge_to": record.knowledge_to,
+        "silver_extraction_ids": list(record.silver_extraction_ids),
+        "doc_id": record.doc_id,
+    }
+
+
+def _limit_from_row(row: dict[str, Any]) -> GoldCollateralLimit:
+    return GoldCollateralLimit(
+        dimension=row["dimension"],
+        scope_value=row["scope_value"],
+        limit_value=row["limit_value"],
+        limit_unit=LimitUnit(row["limit_unit"]),
+        limit_currency=row["limit_currency"],
+        basis=row["basis"],
+        aggregation=row["aggregation"],
+        counterparty=row["counterparty"],
+        agreement_id=row["agreement_id"],
+        schedule_version=row["schedule_version"],
+        clearing_house=row["clearing_house"],
+        valid_from=_as_date(row["valid_from"]),
+        valid_to=_as_date(row["valid_to"]),
+        knowledge_from=_require_datetime(row["knowledge_from"]),
+        knowledge_to=_as_datetime(row["knowledge_to"]),
+        silver_extraction_ids=tuple(row["silver_extraction_ids"] or ()),
+        doc_id=row["doc_id"],
+    )
 
 
 def _gold_to_row(record: GoldEligibilityTerm) -> dict[str, Any]:
