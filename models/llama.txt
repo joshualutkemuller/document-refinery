@@ -1,0 +1,3 @@
+# Install Ollama from https://ollama.com/download, then:
+ollama pull llama3.1:8b
+ollama run llama3.1:8b
