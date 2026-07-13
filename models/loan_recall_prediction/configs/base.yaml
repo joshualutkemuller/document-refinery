@@ -1,0 +1,25 @@
+model:
+  name: loan_recall_prediction
+  version: recall_model_0.1.0
+  feature_set_version: feature_set_0.1.0
+  horizons_business_days: [1, 3, 5, 10]
+
+risk_bands:
+  low_max: 0.10
+  moderate_max: 0.25
+  high_max: 0.50
+  critical_min: 0.50
+
+scoring:
+  mode: daily_batch
+  duplicate_alert_suppression_hours: 24
+  minimum_reason_codes: 3
+  default_data_quality_status: PASS
+
+governance:
+  intended_use: decision_support
+  prohibited_uses:
+    - autonomous_loan_termination
+    - direct_client_communication_without_review
+    - legal_interpretation
+    - unapproved_dynamic_pricing
