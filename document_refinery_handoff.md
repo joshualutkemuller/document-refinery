@@ -641,7 +641,9 @@ Follow-ups from the `collateral_rule_schedule` limit work, in order:
    (`GoldLimitStore`, bitemporal via `InMemoryLimitHistory`). Off by default and
    never touches the eligibility path; an inconsistency fails closed at Gate A.
    Still gated by owner Gate S + an owner-verified golden set before production
-   use, and Delta landing for limits is not yet added (JSONL only).
+   use. **Delta landing added:** `--limit-store delta [--limit-uri …]` writes
+   real versioned Delta tables via `DeltaLimitStore` (delta-rs, `delta` extra),
+   matching the eligibility Delta adapter.
 3. **The optimizer join. Delivered (preview):**
    `platinum/constraint_set.py` — `build_constraint_sets()` joins
    `gold_eligibility_terms` + `gold_collateral_limits` + `gold_margin_requirements`
@@ -660,6 +662,11 @@ Follow-ups from the `collateral_rule_schedule` limit work, in order:
   rows from the `margin_requirement` schema — the demand side. Wired opt-in into
   approval (`RefineryPipeline.margin_store`, `approve --land-margin`) exactly like
   limits, and into the constraint-set join above. Behind Gate S; off by default.
+- **Delta storage for limits.** `DeltaLimitStore` (delta-rs) lands
+  `gold_collateral_limits` to local or object-store Delta tables via
+  `approve --land-limits --limit-store delta`, with the same bitemporal closure as
+  the JSONL adapter. (Margin-requirement Delta landing is the obvious next mirror;
+  not yet added.)
 
 ### Then proceed to Phase 2
 
